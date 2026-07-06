@@ -383,6 +383,7 @@ function curProfile(){ return state.profiles[state.currentProfile]; }
 
 const app = document.getElementById("app");
 let view = {name:"profileSelect"};
+let returnView = {name:"profileSelect"};
 let sessionTimerStart = null;
 let currentSubject = "mathe";
 
@@ -465,7 +466,12 @@ function topBar(profileName){
       <button class="gear" id="gearBtn" title="Elternbereich">⚙️</button>
     </div>`;
   app.appendChild(div);
-  div.querySelector("#gearBtn").onclick = ()=> goto({name:"parentPin"});
+  div.querySelector("#gearBtn").onclick = ()=>{
+    returnView = view;
+    if(state.currentProfile) logTime(state.currentProfile);
+    sessionTimerStart = null;
+    goto({name:"parentPin"});
+  };
 }
 
 function renderProfileSelect(){
@@ -501,7 +507,7 @@ function renderProfileSelect(){
       goto(profile.name ? {name:"subjectMap"} : {name:"nameSetup"});
     };
   });
-  wrap.querySelector("#parentBtn").onclick = ()=> goto({name:"parentPin", fromProfileSelect:true});
+  wrap.querySelector("#parentBtn").onclick = ()=>{ returnView = {name:"profileSelect"}; goto({name:"parentPin"}); };
 }
 
 function renderNameSetup(){
@@ -1169,8 +1175,8 @@ function renderParentPin(){
   });
   overlay.querySelector("#cancelPin").onclick = ()=>{
     overlay.remove();
-    if(view.fromProfileSelect || !state.currentProfile) goto({name:"profileSelect"});
-    else render();
+    if(state.currentProfile) sessionTimerStart = Date.now();
+    goto(returnView);
   };
 }
 
@@ -1293,8 +1299,8 @@ function drawDash(modal){
   };
   modal.querySelector("#closeDash").onclick = ()=>{
     modal.closest(".modal-overlay").remove();
-    if(!state.currentProfile) goto({name:"profileSelect"});
-    else render();
+    if(state.currentProfile) sessionTimerStart = Date.now();
+    goto(returnView);
   };
 }
 
