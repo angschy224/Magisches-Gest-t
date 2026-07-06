@@ -193,7 +193,7 @@
   @media (orientation:portrait) and (max-width:820px){
     .portrait-hint{display:flex; position:fixed; inset:0; background:rgba(10,4,30,.94); z-index:200; align-items:center; justify-content:center; text-align:center; flex-direction:column; gap:16px; padding:30px;}
   }
-  input[type="number"], input[type="text"]{font-size:20px; padding:12px; border-radius:12px; border:2px solid #ccc; width:100%;}
+  input[type="number"], input[type="text"], select{font-size:20px; padding:12px; border-radius:12px; border:2px solid #ccc; width:100%; background:#fff; color:var(--ink);}
   .small-muted{font-size:13px; opacity:.75;}
 </style>
 </head>
@@ -211,7 +211,16 @@
 "use strict";
 
 const STORAGE_KEY = "magischesGestuetV1";
-const PROFILE_NAMES = ["Mira","Kate"];
+const PROFILE_SLOTS = ["child1","child2","child3"];
+const PROFILE_AVATARS = ["🧙‍♀️","🧝‍♀️","🧚‍♀️"];
+const GRADES = ["1","2","3","4"];
+const GRADE_HAS_CONTENT = {"1":false,"2":false,"3":true,"4":false};
+const SUBJECTS = {
+  mathe:{id:"mathe", label:"Koppel", subtitle:"Mathe", icon:"🐴"},
+  deutsch:{id:"deutsch", label:"Bibliothek", subtitle:"Deutsch", icon:"📚"},
+  hsu:{id:"hsu", label:"Abenteuerwald", subtitle:"HSU", icon:"🌳"}
+};
+const SUBJECT_KEYS = Object.keys(SUBJECTS);
 
 const TOPIC_META = {
   einmaleins:{label:"Einmaleins", emoji:"✖️"},
@@ -276,26 +285,68 @@ function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const
 function uniq(arr){ return [...new Set(arr)]; }
 
 function defaultStat(){ return {level:1, correct:0, wrong:0, correctStreak:0, wrongStreak:0}; }
-function defaultProfile(){
+function defaultSubjectProgress(hasTopics){
+  if(!hasTopics) return {chapterProgress:{}, stats:{}, topicsEnabled:{}};
   const stats = {};
   TOPIC_KEYS.forEach(k=> stats[k]=defaultStat());
   const topicsEnabled = {};
   TOPIC_KEYS.forEach(k=> topicsEnabled[k]=true);
+  return {chapterProgress:{}, stats, topicsEnabled};
+}
+function defaultProfile(slotIndex){
   return {
+    name:null,
+    unlocked: slotIndex===0,
+    grade:"3",
     stars:0,
-    chapterProgress:{},
     horses:[],
     ownedAccessories:[],
     horseEquip:{},
-    stats,
-    topicsEnabled,
-    timeLog:{}
+    timeLog:{},
+    subjects:{
+      mathe: defaultSubjectProgress(true),
+      deutsch: defaultSubjectProgress(false),
+      hsu: defaultSubjectProgress(false)
+    }
   };
 }
 function defaultState(){
   const profiles = {};
-  PROFILE_NAMES.forEach(n=> profiles[n]=defaultProfile());
-  return { profiles, settings:{pin:"2412"}, currentProfile:null };
+  PROFILE_SLOTS.forEach((slot,i)=> profiles[slot]=defaultProfile(i));
+  return { profiles, settings:{pin:"2412"}, currentProfile:null, schemaVersion:2 };
+}
+
+function subjectProgress(profile, subjectKey){ return profile.subjects[subjectKey]; }
+function defaultProfileLabel(slot){ return "Kind " + (PROFILE_SLOTS.indexOf(slot)+1); }
+function displayName(profile, slot){ return (profile.name && profile.name.trim()) ? profile.name.trim() : defaultProfileLabel(slot); }
+
+function hasLegacyProgress(old){
+  return !!(old && ((old.chapterProgress && Object.keys(old.chapterProgress).length) || old.stars || (old.horses && old.horses.length)));
+}
+function migrateLegacyState(parsed){
+  const fresh = defaultState();
+  const legacyNames = ["Mira","Kate"];
+  legacyNames.forEach((name,i)=>{
+    const old = parsed.profiles && parsed.profiles[name];
+    if(!old) return;
+    const slot = PROFILE_SLOTS[i];
+    const np = defaultProfile(i);
+    np.name = name;
+    np.unlocked = i===0 || hasLegacyProgress(old);
+    np.stars = old.stars || 0;
+    np.horses = old.horses || [];
+    np.ownedAccessories = old.ownedAccessories || [];
+    np.horseEquip = old.horseEquip || {};
+    np.timeLog = old.timeLog || {};
+    np.subjects.mathe.chapterProgress = old.chapterProgress || {};
+    TOPIC_KEYS.forEach(k=>{
+      np.subjects.mathe.stats[k] = Object.assign(defaultStat(), (old.stats||{})[k]);
+    });
+    np.subjects.mathe.topicsEnabled = Object.assign({}, np.subjects.mathe.topicsEnabled, old.topicsEnabled||{});
+    fresh.profiles[slot] = np;
+  });
+  if(parsed.settings && parsed.settings.pin) fresh.settings.pin = parsed.settings.pin;
+  return fresh;
 }
 
 let state = loadState();
@@ -304,14 +355,21 @@ function loadState(){
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return defaultState();
     const parsed = JSON.parse(raw);
+    if(!parsed.schemaVersion || parsed.schemaVersion < 2){
+      return migrateLegacyState(parsed);
+    }
     const fresh = defaultState();
-    PROFILE_NAMES.forEach(n=>{
-      if(parsed.profiles && parsed.profiles[n]){
-        parsed.profiles[n] = Object.assign(defaultProfile(), parsed.profiles[n]);
+    PROFILE_SLOTS.forEach((slot,i)=>{
+      if(parsed.profiles && parsed.profiles[slot]){
+        const merged = Object.assign(defaultProfile(i), parsed.profiles[slot]);
+        merged.subjects = merged.subjects || {};
+        merged.subjects.mathe = Object.assign(defaultSubjectProgress(true), merged.subjects.mathe||{});
         TOPIC_KEYS.forEach(k=>{
-          parsed.profiles[n].stats[k] = Object.assign(defaultStat(), (parsed.profiles[n].stats||{})[k]);
+          merged.subjects.mathe.stats[k] = Object.assign(defaultStat(), (merged.subjects.mathe.stats||{})[k]);
         });
-        fresh.profiles[n] = parsed.profiles[n];
+        merged.subjects.deutsch = merged.subjects.deutsch || defaultSubjectProgress(false);
+        merged.subjects.hsu = merged.subjects.hsu || defaultSubjectProgress(false);
+        fresh.profiles[slot] = merged;
       }
     });
     if(parsed.settings && parsed.settings.pin) fresh.settings.pin = parsed.settings.pin;
@@ -319,12 +377,15 @@ function loadState(){
   }catch(e){ return defaultState(); }
 }
 function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+saveState();
 
 function curProfile(){ return state.profiles[state.currentProfile]; }
 
 const app = document.getElementById("app");
 let view = {name:"profileSelect"};
+let returnView = {name:"profileSelect"};
 let sessionTimerStart = null;
+let currentSubject = "mathe";
 
 function logTime(profileName){
   if(sessionTimerStart==null) return;
@@ -382,6 +443,9 @@ if(!document.getElementById("rainbowKF")){
 function render(){
   app.innerHTML = "";
   if(view.name==="profileSelect") return renderProfileSelect();
+  if(view.name==="nameSetup") return renderNameSetup();
+  if(view.name==="subjectMap") return renderSubjectMap();
+  if(view.name==="comingSoon") return renderComingSoon();
   if(view.name==="home") return renderHome();
   if(view.name==="chapterIntro") return renderChapterIntro();
   if(view.name==="task") return renderTask();
@@ -402,23 +466,33 @@ function topBar(profileName){
       <button class="gear" id="gearBtn" title="Elternbereich">⚙️</button>
     </div>`;
   app.appendChild(div);
-  div.querySelector("#gearBtn").onclick = ()=> goto({name:"parentPin"});
+  div.querySelector("#gearBtn").onclick = ()=>{
+    returnView = view;
+    if(state.currentProfile) logTime(state.currentProfile);
+    sessionTimerStart = null;
+    goto({name:"parentPin"});
+  };
 }
 
 function renderProfileSelect(){
   const wrap = document.createElement("div");
   wrap.className = "center-wrap";
+  const unlockedSlots = PROFILE_SLOTS.filter(slot=> state.profiles[slot].unlocked);
   wrap.innerHTML = `
     <div class="panel">
       <h1>🦄 Willkommen im magischen Gestüt!</h1>
       <p>Wer bist du heute?</p>
       <div class="profile-grid">
-        ${PROFILE_NAMES.map(n=>`
+        ${unlockedSlots.map(slot=>{
+          const p = state.profiles[slot];
+          const idx = PROFILE_SLOTS.indexOf(slot);
+          return `
           <div class="profile-card">
-            <div class="emoji">${n==="Mira"?"🧙‍♀️":"🧝‍♀️"}</div>
-            <div style="font-size:22px; font-weight:800;">${n}</div>
-            <button class="btn" data-profile="${n}">Los geht's!</button>
-          </div>`).join("")}
+            <div class="emoji">${PROFILE_AVATARS[idx]}</div>
+            <div style="font-size:22px; font-weight:800;">${displayName(p, slot)}</div>
+            <button class="btn" data-profile="${slot}">Los geht's!</button>
+          </div>`;
+        }).join("")}
       </div>
     </div>
     <div style="margin-top:18px;"><button class="btn ghost" id="parentBtn">⚙️ Elternbereich</button></div>
@@ -429,20 +503,108 @@ function renderProfileSelect(){
       state.currentProfile = btn.dataset.profile;
       sessionTimerStart = Date.now();
       saveState();
-      goto({name:"home"});
+      const profile = curProfile();
+      goto(profile.name ? {name:"subjectMap"} : {name:"nameSetup"});
     };
   });
-  wrap.querySelector("#parentBtn").onclick = ()=> goto({name:"parentPin", fromProfileSelect:true});
+  wrap.querySelector("#parentBtn").onclick = ()=>{ returnView = {name:"profileSelect"}; goto({name:"parentPin"}); };
+}
+
+function renderNameSetup(){
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <div class="panel">
+      <div class="horse-emoji small">🧙‍♀️✨</div>
+      <h1>Wie heißt du, junge Magierin / junger Magier?</h1>
+      <p>Trag deinen Namen ein, damit die Pferde dich erkennen.</p>
+      <input type="text" id="nameInput" maxlength="12" placeholder="Dein Name" style="max-width:320px; text-align:center; font-size:22px;">
+      <div class="footer-nav">
+        <button class="btn" id="nameSubmit" disabled>Weiter</button>
+        <button class="btn ghost" id="nameCancel">Abbrechen</button>
+      </div>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const input = wrap.querySelector("#nameInput");
+  const submitBtn = wrap.querySelector("#nameSubmit");
+  input.addEventListener("input", ()=>{ submitBtn.disabled = input.value.trim().length===0; });
+  input.focus();
+  function submit(){
+    const val = input.value.trim().slice(0,12);
+    if(!val) return;
+    const profile = curProfile();
+    profile.name = val;
+    saveState();
+    goto({name:"subjectMap"});
+  }
+  submitBtn.onclick = submit;
+  input.addEventListener("keydown", e=>{ if(e.key==="Enter") submit(); });
+  wrap.querySelector("#nameCancel").onclick = ()=>{ state.currentProfile=null; goto({name:"profileSelect"}); };
+}
+
+function renderSubjectMap(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <h1>Hallo, ${displayName(profile, state.currentProfile)}! 🌟</h1>
+    <p>Was möchtest du heute im Gestüt entdecken?</p>
+    <div class="profile-grid" id="subjectGrid"></div>
+    <div class="footer-nav">
+      <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const grid = wrap.querySelector("#subjectGrid");
+  SUBJECT_KEYS.forEach(key=>{
+    const s = SUBJECTS[key];
+    const card = document.createElement("div");
+    card.className = "profile-card";
+    card.innerHTML = `
+      <div class="emoji">${s.icon}</div>
+      <div style="font-size:22px; font-weight:800;">${s.label}</div>
+      <div class="small-muted">${s.subtitle}</div>
+      <button class="btn" data-subject="${key}">${key==="mathe"?"Los geht's!":"Ansehen"}</button>
+    `;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll("[data-subject]").forEach(btn=>{
+    btn.onclick = ()=>{
+      currentSubject = btn.dataset.subject;
+      if(currentSubject==="mathe") goto({name:"home"});
+      else goto({name:"comingSoon", subject:currentSubject});
+    };
+  });
+  wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
+}
+
+function renderComingSoon(){
+  topBar(state.currentProfile);
+  const s = SUBJECTS[view.subject];
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <div class="story-box">
+      <div class="horse-emoji small">${s.icon}</div>
+      <h1>${s.label}</h1>
+      <p>Hier entsteht bald ein neues Abenteuer für ${s.subtitle}! Schau gerne bald wieder vorbei. ✨</p>
+      <button class="btn secondary" id="backMap">Zurück zur Übersicht</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  wrap.querySelector("#backMap").onclick = ()=> goto({name:"subjectMap"});
 }
 
 function chapterUnlocked(idx, profile){
   if(idx===0) return true;
   const prev = CHAPTERS[idx-1];
-  return !!profile.chapterProgress[prev.id];
+  return !!subjectProgress(profile,"mathe").chapterProgress[prev.id];
 }
 function chapterTopicEnabled(chapter, profile){
   if(chapter.mainTopic==="mixed") return true;
-  return profile.topicsEnabled[chapter.mainTopic];
+  return subjectProgress(profile,"mathe").topicsEnabled[chapter.mainTopic];
 }
 
 function renderHome(){
@@ -450,13 +612,14 @@ function renderHome(){
   topBar(state.currentProfile);
   const wrap = document.createElement("div");
   wrap.className = "center-wrap";
-  const doneCount = CHAPTERS.filter(c=>profile.chapterProgress[c.id]).length;
+  const doneCount = CHAPTERS.filter(c=>subjectProgress(profile,"mathe").chapterProgress[c.id]).length;
   wrap.innerHTML = `
-    <h1>Hallo, ${state.currentProfile}! 🌟</h1>
+    <h1>Hallo, ${displayName(profile, state.currentProfile)}! 🌟</h1>
     <p>${doneCount} von ${CHAPTERS.length} Kapiteln geschafft. Wähle dein nächstes Abenteuer:</p>
     <div class="chapter-grid" id="chapterGrid"></div>
     <div class="footer-nav">
       <button class="btn secondary" id="toStall">🏠 Zum Stall</button>
+      <button class="btn ghost" id="toSubjectMap">🏰 Andere Fächer</button>
       <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
     </div>
   `;
@@ -465,7 +628,7 @@ function renderHome(){
   CHAPTERS.forEach((c, idx)=>{
     const unlocked = chapterUnlocked(idx, profile);
     const enabled = chapterTopicEnabled(c, profile);
-    const done = !!profile.chapterProgress[c.id];
+    const done = !!subjectProgress(profile,"mathe").chapterProgress[c.id];
     const card = document.createElement("div");
     card.className = "chapter-card" + (!unlocked||!enabled?" locked":"") + (done?" done":"");
     const topicLabel = c.mainTopic==="mixed" ? "Alle Themen" : TOPIC_META[c.mainTopic].label;
@@ -487,6 +650,7 @@ function renderHome(){
     };
   });
   wrap.querySelector("#toStall").onclick = ()=> goto({name:"stall"});
+  wrap.querySelector("#toSubjectMap").onclick = ()=> goto({name:"subjectMap"});
   wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
 }
 
@@ -514,9 +678,10 @@ function renderChapterIntro(){
 }
 
 function buildTaskTopics(chapter, profile){
+  const topicsEnabled = subjectProgress(profile,"mathe").topicsEnabled;
   function fallback(t){
-    if(profile.topicsEnabled[t]) return t;
-    const alt = TOPIC_KEYS.find(k=>profile.topicsEnabled[k]);
+    if(topicsEnabled[t]) return t;
+    const alt = TOPIC_KEYS.find(k=>topicsEnabled[k]);
     return alt || t;
   }
   if(chapter.mainTopic==="textaufgaben"){
@@ -739,7 +904,7 @@ function renderTask(){
     return goto({name:"reward", chapterId:chapter.id, chapterStars:view.chapterStars});
   }
   const topic = view.topics[idx];
-  const level = profile.stats[topic].level;
+  const level = subjectProgress(profile,"mathe").stats[topic].level;
   if(!view.currentTask || view.currentTaskTopic!==topic){
     view.currentTask = generateTask(topic, level, chapter.theme);
     view.currentTaskTopic = topic;
@@ -781,7 +946,7 @@ function handleAnswer(isCorrect, btnEl, wrapEl){
   const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
   const profile = curProfile();
   const topic = view.currentTaskTopic;
-  const statObj = profile.stats[topic];
+  const statObj = subjectProgress(profile,"mathe").stats[topic];
   const grid = wrapEl.querySelector("#optionsGrid");
   grid.querySelectorAll("button").forEach(b=> b.disabled = true);
 
@@ -849,9 +1014,9 @@ function flyStars(fromEl, count){
 function renderReward(){
   const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
   const profile = curProfile();
-  const alreadyDone = !!profile.chapterProgress[chapter.id];
+  const alreadyDone = !!subjectProgress(profile,"mathe").chapterProgress[chapter.id];
   if(!alreadyDone){
-    profile.chapterProgress[chapter.id] = true;
+    subjectProgress(profile,"mathe").chapterProgress[chapter.id] = true;
     profile.horses.push({id:"horse_"+chapter.id, name:chapter.horse.name, color:chapter.horse.color, emoji:chapter.horse.emoji, hue:chapter.horse.hue, ability:chapter.horse.ability});
     saveState();
   }
@@ -1010,12 +1175,12 @@ function renderParentPin(){
   });
   overlay.querySelector("#cancelPin").onclick = ()=>{
     overlay.remove();
-    if(view.fromProfileSelect || !state.currentProfile) goto({name:"profileSelect"});
-    else render();
+    if(state.currentProfile) sessionTimerStart = Date.now();
+    goto(returnView);
   };
 }
 
-let parentDashTab = PROFILE_NAMES[0];
+let parentDashTab = PROFILE_SLOTS[0];
 function renderParentDash(){
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -1026,6 +1191,7 @@ function renderParentDash(){
 
 function drawDash(modal){
   const profile = state.profiles[parentDashTab];
+  const mathe = subjectProgress(profile,"mathe");
   const totalToday = profile.timeLog[todayStr()] || 0;
   const last7 = [];
   for(let i=6;i>=0;i--){
@@ -1033,21 +1199,44 @@ function drawDash(modal){
     const key = d.toISOString().slice(0,10);
     last7.push({key, mins: profile.timeLog[key]||0});
   }
+  const isFirstSlot = parentDashTab===PROFILE_SLOTS[0];
   modal.innerHTML = `
     <h2>⚙️ Elternbereich</h2>
     <div class="tabs">
-      ${PROFILE_NAMES.map(n=>`<div class="tab ${n===parentDashTab?"active":""}" data-tab="${n}">${n}</div>`).join("")}
+      ${PROFILE_SLOTS.map(slot=>{
+        const p = state.profiles[slot];
+        const label = displayName(p, slot) + (p.unlocked?"":" 🔒");
+        return `<div class="tab ${slot===parentDashTab?"active":""}" data-tab="${slot}">${label}</div>`;
+      }).join("")}
     </div>
-    <h2 style="font-size:19px;">Themen &amp; Fortschritt</h2>
+    <h2 style="font-size:19px;">Profil verwalten</h2>
+    <div class="stat-row">
+      <input type="text" id="profileName" maxlength="12" placeholder="${defaultProfileLabel(parentDashTab)}" value="${profile.name||""}" style="max-width:220px;">
+      <button class="btn secondary" id="saveName">Namen speichern</button>
+    </div>
+    <div class="stat-row">
+      <div>Profil-Status</div>
+      ${isFirstSlot
+        ? `<span class="pill">Immer aktiv</span>`
+        : `<button class="btn ${profile.unlocked?"secondary":""}" id="toggleUnlock">${profile.unlocked?"🔒 Sperren":"🔓 Freischalten"}</button>`}
+    </div>
+    <div class="stat-row">
+      <div>Klassenstufe</div>
+      <select id="gradeSelect">
+        ${GRADES.map(g=>`<option value="${g}" ${profile.grade===g?"selected":""} ${!GRADE_HAS_CONTENT[g]?"disabled":""}>Klasse ${g}${GRADE_HAS_CONTENT[g]?"":" (Inhalte folgen)"}</option>`).join("")}
+      </select>
+    </div>
+    <p class="small-muted">Aktuell gibt es nur für Klasse 3 fertige Inhalte. Weitere Klassenstufen folgen.</p>
+    <h2 style="font-size:19px; margin-top:16px;">🐴 Koppel (Mathe): Themen &amp; Fortschritt</h2>
     ${TOPIC_KEYS.map(k=>{
-      const s = profile.stats[k];
+      const s = mathe.stats[k];
       const total = s.correct+s.wrong;
       const errRate = total>0 ? Math.round((s.wrong/total)*100) : 0;
       return `
       <div class="stat-row">
         <div><b>${TOPIC_META[k].emoji} ${TOPIC_META[k].label}</b><br>
         <span class="pill">Stufe ${s.level}/5</span> <span class="pill">✅ ${s.correct}</span> <span class="pill">❌ ${s.wrong}</span> <span class="pill">Fehlerquote ${errRate}%</span></div>
-        <div class="toggle ${profile.topicsEnabled[k]?"on":""}" data-toggle="${k}"><div class="knob"></div></div>
+        <div class="toggle ${mathe.topicsEnabled[k]?"on":""}" data-toggle="${k}"><div class="knob"></div></div>
       </div>`;
     }).join("")}
     <h2 style="font-size:19px; margin-top:16px;">Übungszeit (heute: ${totalToday} Min.)</h2>
@@ -1069,11 +1258,35 @@ function drawDash(modal){
   modal.querySelectorAll("[data-toggle]").forEach(t=>{
     t.onclick = ()=>{
       const k = t.dataset.toggle;
-      profile.topicsEnabled[k] = !profile.topicsEnabled[k];
+      mathe.topicsEnabled[k] = !mathe.topicsEnabled[k];
       saveState();
       drawDash(modal);
     };
   });
+  modal.querySelector("#saveName").onclick = ()=>{
+    const val = modal.querySelector("#profileName").value.trim().slice(0,12);
+    profile.name = val || null;
+    saveState();
+    drawDash(modal);
+  };
+  const unlockBtn = modal.querySelector("#toggleUnlock");
+  if(unlockBtn){
+    unlockBtn.onclick = ()=>{
+      profile.unlocked = !profile.unlocked;
+      saveState();
+      drawDash(modal);
+    };
+  }
+  modal.querySelector("#gradeSelect").onchange = (e)=>{
+    const val = e.target.value;
+    if(!GRADE_HAS_CONTENT[val]){
+      alert(`Für Klasse ${val} gibt es noch keine Inhalte – bald verfügbar!`);
+      drawDash(modal);
+      return;
+    }
+    profile.grade = val;
+    saveState();
+  };
   modal.querySelector("#savePin").onclick = ()=>{
     const val = modal.querySelector("#newPin").value.trim();
     if(/^\d{4}$/.test(val)){
@@ -1086,8 +1299,8 @@ function drawDash(modal){
   };
   modal.querySelector("#closeDash").onclick = ()=>{
     modal.closest(".modal-overlay").remove();
-    if(!state.currentProfile) goto({name:"profileSelect"});
-    else render();
+    if(state.currentProfile) sessionTimerStart = Date.now();
+    goto(returnView);
   };
 }
 
