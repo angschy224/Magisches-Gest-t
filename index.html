@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Das magische Gestüt</title>
+<style>
+  :root{
+    --bg1:#150a3d;
+    --bg2:#3a1568;
+    --bg3:#5b2a86;
+    --gold:#ffd76a;
+    --gold-dark:#e8ad2f;
+    --card:#ffffff;
+    --ink:#2a1c4f;
+    --ink-soft:#5c4a8a;
+    --pink:#ff8fc7;
+    --green:#6be3b0;
+    --blue:#7ec8ff;
+    --danger-soft:#ffb37a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{height:100%; margin:0; overscroll-behavior:none;}
+  body{
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Verdana, sans-serif;
+    background:linear-gradient(160deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+    color:#fff;
+    min-height:100vh;
+    font-size:18px;
+    overflow-x:hidden;
+    position:relative;
+  }
+  .sky{position:fixed; inset:0; overflow:hidden; z-index:0; pointer-events:none;}
+  .twinkle{position:absolute; color:var(--gold); opacity:.55; animation:twinkle 3s ease-in-out infinite;}
+  @keyframes twinkle{0%,100%{opacity:.2; transform:scale(.8);} 50%{opacity:.9; transform:scale(1.15);}}
+  #app{position:relative; z-index:1; min-height:100vh; display:flex; flex-direction:column;}
+
+  button{font-family:inherit; cursor:pointer; border:none; outline:none;}
+  .btn{
+    background:linear-gradient(180deg,#ffe9a8,var(--gold));
+    color:var(--ink);
+    font-weight:700;
+    font-size:20px;
+    padding:18px 28px;
+    border-radius:22px;
+    box-shadow:0 6px 0 var(--gold-dark), 0 10px 18px rgba(0,0,0,.35);
+    transition:transform .08s ease;
+    min-height:64px;
+  }
+  .btn:active{transform:translateY(4px); box-shadow:0 2px 0 var(--gold-dark), 0 4px 10px rgba(0,0,0,.3);}
+  .btn.secondary{background:linear-gradient(180deg,#c9b6ff,#9b7bea); color:#241249; box-shadow:0 6px 0 #6f4fc0, 0 10px 18px rgba(0,0,0,.35);}
+  .btn.secondary:active{box-shadow:0 2px 0 #6f4fc0;}
+  .btn.ghost{background:rgba(255,255,255,.12); color:#fff; box-shadow:none; border:2px solid rgba(255,255,255,.35);}
+  .btn.ghost:active{transform:translateY(2px);}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+  .btn.wide{width:100%;}
+
+  .topbar{display:flex; align-items:center; justify-content:space-between; padding:14px 22px; gap:12px;}
+  .brand{font-size:22px; font-weight:800; letter-spacing:.5px; display:flex; align-items:center; gap:10px;}
+  .starcount{display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.12); padding:8px 16px; border-radius:20px; font-weight:700; font-size:20px;}
+  .gear{
+    width:52px; height:52px; border-radius:50%; background:rgba(255,255,255,.14);
+    display:flex; align-items:center; justify-content:center; font-size:26px; border:2px solid rgba(255,255,255,.25);
+  }
+  .gear:active{transform:scale(.92);}
+
+  .center-wrap{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center;}
+  .panel{
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:28px;
+    padding:30px;
+    max-width:900px;
+    width:100%;
+    backdrop-filter:blur(6px);
+  }
+  h1{font-size:30px; margin:.2em 0;}
+  h2{font-size:24px; margin:.3em 0;}
+  p{line-height:1.5;}
+
+  .profile-grid{display:flex; gap:26px; flex-wrap:wrap; justify-content:center; margin-top:20px;}
+  .profile-card{
+    background:linear-gradient(160deg,#ffffff22,#ffffff0d);
+    border:2px solid rgba(255,255,255,.3);
+    border-radius:26px; padding:26px 34px; min-width:220px;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+  }
+  .profile-card .emoji{font-size:56px;}
+  .profile-card button{margin-top:8px;}
+
+  .chapter-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; width:100%; max-width:1100px;}
+  .chapter-card{
+    background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.2); border-radius:22px;
+    padding:18px; text-align:left; display:flex; flex-direction:column; gap:8px; position:relative;
+  }
+  .chapter-card.locked{opacity:.45; filter:grayscale(.6);}
+  .chapter-card.done{border-color:var(--gold);}
+  .chapter-badge{position:absolute; top:12px; right:14px; font-size:26px;}
+  .chapter-num{font-size:13px; opacity:.8; font-weight:700; letter-spacing:1px;}
+  .chapter-title{font-size:20px; font-weight:800;}
+  .chapter-topic{font-size:14px; opacity:.85;}
+
+  .story-box{
+    background:rgba(255,255,255,.1); border-radius:22px; padding:26px; max-width:760px;
+    display:flex; flex-direction:column; gap:16px; align-items:center;
+  }
+  .horse-emoji{font-size:96px; display:inline-block; filter:saturate(1.1);}
+  .horse-emoji.small{font-size:56px;}
+
+  .task-wrap{flex:1; display:flex; flex-direction:column; align-items:center; padding:16px 20px 30px;}
+  .progress-row{display:flex; gap:8px; margin:8px 0 18px; flex-wrap:wrap; justify-content:center;}
+  .progress-dot{width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.25); border:2px solid rgba(255,255,255,.35);}
+  .progress-dot.done{background:var(--gold); border-color:var(--gold-dark);}
+  .progress-dot.current{background:#fff; border-color:var(--gold);}
+
+  .question-card{
+    background:#fff; color:var(--ink); border-radius:26px; padding:30px; max-width:760px; width:100%;
+    box-shadow:0 14px 30px rgba(0,0,0,.35); text-align:center; display:flex; flex-direction:column; gap:14px; align-items:center;
+  }
+  .question-text{font-size:24px; font-weight:800; line-height:1.4;}
+  .question-sub{font-size:18px; color:var(--ink-soft);}
+  .options-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; width:100%; margin-top:10px;}
+  @media (max-width:640px){.options-grid{grid-template-columns:1fr;}}
+  .opt-btn{
+    background:#f4f0ff; color:var(--ink); font-size:22px; font-weight:700; padding:20px; border-radius:18px;
+    border:3px solid #e2d8ff; min-height:70px;
+  }
+  .opt-btn:active{transform:scale(.96); background:#e9e0ff;}
+  .opt-btn.correct-flash{background:var(--green); border-color:#3ec894; color:#0b3d2c;}
+  .opt-btn.try-again{background:#ffe3c2; border-color:var(--danger-soft);}
+
+  .hint-bubble{
+    display:flex; gap:14px; align-items:flex-start; background:#fff4de; border:3px solid #ffd9a0; border-radius:20px;
+    padding:16px 18px; max-width:760px; width:100%; text-align:left; color:#5a3d15; animation:pop .25s ease;
+  }
+  @keyframes pop{from{transform:scale(.9); opacity:0;} to{transform:scale(1); opacity:1;}}
+  .hint-bubble .horse-emoji{font-size:44px;}
+  .hint-bubble b{display:block; margin-bottom:4px;}
+
+  .clock-svg{width:180px; height:180px;}
+
+  .reward-scene{display:flex; flex-direction:column; align-items:center; gap:14px;}
+  .gallop{animation:gallop 1.4s ease-in-out infinite;}
+  @keyframes gallop{
+    0%,100%{transform:translateY(0) rotate(0deg);}
+    25%{transform:translateY(-14px) rotate(-4deg);}
+    50%{transform:translateY(0) rotate(0deg);}
+    75%{transform:translateY(-8px) rotate(4deg);}
+  }
+  .star-fly{position:fixed; font-size:30px; z-index:50; pointer-events:none; animation:flyStar 1s ease-in forwards;}
+  @keyframes flyStar{
+    0%{transform:translate(0,0) scale(1); opacity:1;}
+    100%{transform:translate(var(--dx),var(--dy)) scale(.4); opacity:0;}
+  }
+  .confetti{position:fixed; top:-20px; font-size:22px; z-index:40; animation:fall linear forwards;}
+  @keyframes fall{ to{transform:translateY(110vh) rotate(360deg); opacity:.2;} }
+
+  .stall-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:18px; width:100%; max-width:1100px;}
+  .horse-card{
+    background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.2); border-radius:22px; padding:18px;
+    display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center;
+  }
+  .horse-card .name{font-weight:800; font-size:18px;}
+  .horse-card .ability{font-size:13px; opacity:.85;}
+  .swatch-row{display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; justify-content:center;}
+  .swatch{width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,.5); display:flex; align-items:center; justify-content:center; font-size:16px;}
+  .swatch.locked{opacity:.35;}
+  .swatch.selected{outline:3px solid #fff; outline-offset:2px;}
+  .badge-emoji{width:34px; height:34px; border-radius:10px; background:rgba(255,255,255,.15); display:flex; align-items:center; justify-content:center; font-size:18px; border:2px solid rgba(255,255,255,.4);}
+
+  .modal-overlay{position:fixed; inset:0; background:rgba(10,4,30,.7); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;}
+  .modal{background:#241249; border-radius:26px; padding:28px; max-width:520px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.5);}
+  .pin-dots{display:flex; gap:14px; justify-content:center; margin:18px 0;}
+  .pin-dot{width:20px; height:20px; border-radius:50%; border:2px solid #fff; background:transparent;}
+  .pin-dot.filled{background:var(--gold);}
+  .keypad{display:grid; grid-template-columns:repeat(3,1fr); gap:12px;}
+  .keypad button{background:rgba(255,255,255,.12); color:#fff; font-size:24px; font-weight:700; padding:18px; border-radius:16px; min-height:60px;}
+  .keypad button:active{background:rgba(255,255,255,.25);}
+
+  .stat-row{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.15); gap:10px; flex-wrap:wrap;}
+  .stat-row:last-child{border-bottom:none;}
+  .pill{background:rgba(255,255,255,.14); padding:4px 12px; border-radius:12px; font-size:14px;}
+  .toggle{width:52px; height:30px; border-radius:20px; background:rgba(255,255,255,.25); position:relative; flex-shrink:0;}
+  .toggle.on{background:var(--green);}
+  .toggle .knob{width:24px; height:24px; border-radius:50%; background:#fff; position:absolute; top:3px; left:3px; transition:left .15s;}
+  .toggle.on .knob{left:25px;}
+  .tabs{display:flex; gap:8px; margin-bottom:14px;}
+  .tab{flex:1; padding:10px; border-radius:14px; background:rgba(255,255,255,.1); text-align:center; font-weight:700;}
+  .tab.active{background:var(--gold); color:var(--ink);}
+
+  .footer-nav{display:flex; gap:14px; justify-content:center; padding:18px; flex-wrap:wrap;}
+  .portrait-hint{display:none;}
+  @media (orientation:portrait) and (max-width:820px){
+    .portrait-hint{display:flex; position:fixed; inset:0; background:rgba(10,4,30,.94); z-index:200; align-items:center; justify-content:center; text-align:center; flex-direction:column; gap:16px; padding:30px;}
+  }
+  input[type="number"], input[type="text"]{font-size:20px; padding:12px; border-radius:12px; border:2px solid #ccc; width:100%;}
+  .small-muted{font-size:13px; opacity:.75;}
+</style>
+</head>
+<body>
+<div class="sky" id="sky"></div>
+<div id="app"></div>
+<div class="portrait-hint">
+  <div style="font-size:60px;">📱↔️</div>
+  <h2>Bitte drehe dein iPad quer!</h2>
+  <p>Das magische Gestüt sieht im Querformat am schönsten aus.</p>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+const STORAGE_KEY = "magischesGestuetV1";
+const PROFILE_NAMES = ["Mira","Kate"];
+
+const TOPIC_META = {
+  einmaleins:{label:"Einmaleins", emoji:"✖️"},
+  zahlenraum:{label:"Zahlenraum bis 1000", emoji:"🔢"},
+  textaufgaben:{label:"Textaufgaben", emoji:"📖"},
+  uhrzeitGroessen:{label:"Uhrzeit & Größen", emoji:"⏰"}
+};
+const TOPIC_KEYS = Object.keys(TOPIC_META);
+
+const ACCESSORIES = [
+  {id:"mane_rosa", type:"mane", name:"Rosa Mähne", cost:8, hue:300, swatch:"#ff8fc7"},
+  {id:"mane_blau", type:"mane", name:"Blaue Mähne", cost:8, hue:200, swatch:"#7ec8ff"},
+  {id:"mane_gruen", type:"mane", name:"Waldgrüne Mähne", cost:12, hue:120, swatch:"#6be3b0"},
+  {id:"mane_regenbogen", type:"mane", name:"Regenbogenmähne", cost:30, hue:"rainbow", swatch:"linear-gradient(90deg,red,orange,yellow,green,blue,violet)"},
+  {id:"saddle_stern", type:"saddle", name:"Sternensattel", cost:10, emoji:"✨"},
+  {id:"saddle_herz", type:"saddle", name:"Herzensattel", cost:10, emoji:"💖"},
+  {id:"saddle_krone", type:"saddle", name:"Königssattel", cost:20, emoji:"👑"},
+  {id:"saddle_diamant", type:"saddle", name:"Diamantsattel", cost:35, emoji:"💎"}
+];
+
+const CHAPTERS = [
+  {id:1, title:"Das Tor zum verzauberten Gestüt", mainTopic:"einmaleins", theme:"apples",
+    intro:"Du stehst vor einem alten, von Ranken überwucherten Tor. Dahinter hörst du leises Wiehern – ein Pferd braucht deine Hilfe! Mit ein bisschen Zauberrechnen kannst du das Tor öffnen.",
+    reward:"Das Tor öffnet sich mit einem goldenen Leuchten! Ein wunderschönes Pferd galoppiert dir entgegen.",
+    horse:{name:"Funkelstern", color:"Silberweiß", emoji:"🐴", hue:0, ability:"lässt kleine Sterne funkeln, wo immer sie hintritt"}},
+  {id:2, title:"Die Apfelwiese", mainTopic:"textaufgaben", theme:"apples",
+    intro:"Auf einer sonnigen Wiese warten hungrige Pferde. Damit sie wieder zu Kräften kommen, musst du ihnen Äpfel zählen und verteilen.",
+    reward:"Die Pferde schnauben zufrieden – und eines von ihnen läuft glücklich zu dir!",
+    horse:{name:"Rubin", color:"Rotbraun", emoji:"🐎", hue:340, ability:"heilt kleine Wehwehchen mit einem sanften Schnauben"}},
+  {id:3, title:"Der Zahlenwald", mainTopic:"zahlenraum", theme:"stars",
+    intro:"Im Zahlenwald hängen leuchtende Zahlenkugeln zwischen den Bäumen. Nur wer richtig addiert, findet den Weg hindurch.",
+    reward:"Der Wald öffnet einen geheimen Pfad – und am Ende wartet ein besonderes Pferd auf dich.",
+    horse:{name:"Mondschatten", color:"Mitternachtsblau", emoji:"🐴", hue:220, ability:"wird im Mondlicht fast unsichtbar"}},
+  {id:4, title:"Die Turmuhr der Zeit", mainTopic:"uhrzeitGroessen", theme:"time",
+    intro:"In einem alten Turm tickt eine riesige, verzauberte Uhr rückwärts. Lies die Zeiten richtig ab, um sie wieder in Ordnung zu bringen.",
+    reward:"Die Turmuhr schlägt fröhlich – die Zeit läuft wieder richtig! Ein glänzendes Pferd erscheint auf der Treppe.",
+    horse:{name:"Sonnenglanz", color:"Goldgelb", emoji:"🐎", hue:45, ability:"lässt am Morgen die Sonne ein bisschen früher scheinen"}},
+  {id:5, title:"Die Zaubertrankküche", mainTopic:"textaufgaben", theme:"potions",
+    intro:"In der Küche brodeln bunte Zaubertränke. Die Hexe braucht deine Hilfe beim Abmessen und Mischen der Zutaten.",
+    reward:"Der Trank leuchtet lila und duftet nach Beeren – aus dem Dampf tritt ein neues Pferd hervor!",
+    horse:{name:"Nebelfee", color:"Flieder-Grau", emoji:"🐴", hue:270, ability:"erschafft weichen Nebel zum Verstecken"}},
+  {id:6, title:"Die Schatzkammer der Zahlen", mainTopic:"zahlenraum", theme:"coins",
+    intro:"Tief unter dem Gestüt liegt eine Schatzkammer voller Zahlensteine. Nur wer richtig subtrahiert, öffnet die letzte Tür.",
+    reward:"Die Tür knarrt auf und gibt den Blick frei auf ein feuriges, funkelndes Pferd.",
+    horse:{name:"Feuermähne", color:"Orangerot", emoji:"🐎", hue:20, ability:"spuckt warmes, harmloses Zauberfeuer zum Wärmen"}},
+  {id:7, title:"Der Markt von Fabelhausen", mainTopic:"uhrzeitGroessen", theme:"coins",
+    intro:"Auf dem bunten Markt von Fabelhausen gibt es alles: Bänder, Hufeisen und Zaubertränke. Rechne mit Euro, Metern und Kilogramm, um die besten Angebote zu finden.",
+    reward:"Mit vollen Taschen voller Angebote gehst du weiter – und ein perlmuttschimmerndes Pferd folgt dir.",
+    horse:{name:"Perlenglanz", color:"Perlweiß-Rosa", emoji:"🐴", hue:330, ability:"lässt kleine Perlen aus der Mähne regnen"}},
+  {id:8, title:"Die Große Sternenprüfung", mainTopic:"mixed", theme:"stars",
+    intro:"Am höchsten Turm des Gestüts wartet die letzte, größte Prüfung. Alle deine Zauberkünste sind jetzt gefragt!",
+    reward:"Der Himmel öffnet sich in allen Farben des Regenbogens. Das letzte, mächtigste Pferd des Gestüts ist endlich frei!",
+    horse:{name:"Regenbogenhorn", color:"Regenbogenfarben", emoji:"🦄", hue:"rainbow", ability:"erfüllt einmal am Tag einen kleinen Wunsch"}}
+];
+
+const TASKS_PER_CHAPTER = 9;
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function rand(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function pick(arr){ return arr[rand(0,arr.length-1)]; }
+function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=rand(0,i); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function uniq(arr){ return [...new Set(arr)]; }
+
+function defaultStat(){ return {level:1, correct:0, wrong:0, correctStreak:0, wrongStreak:0}; }
+function defaultProfile(){
+  const stats = {};
+  TOPIC_KEYS.forEach(k=> stats[k]=defaultStat());
+  const topicsEnabled = {};
+  TOPIC_KEYS.forEach(k=> topicsEnabled[k]=true);
+  return {
+    stars:0,
+    chapterProgress:{},
+    horses:[],
+    ownedAccessories:[],
+    horseEquip:{},
+    stats,
+    topicsEnabled,
+    timeLog:{}
+  };
+}
+function defaultState(){
+  const profiles = {};
+  PROFILE_NAMES.forEach(n=> profiles[n]=defaultProfile());
+  return { profiles, settings:{pin:"2412"}, currentProfile:null };
+}
+
+let state = loadState();
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    const fresh = defaultState();
+    PROFILE_NAMES.forEach(n=>{
+      if(parsed.profiles && parsed.profiles[n]){
+        parsed.profiles[n] = Object.assign(defaultProfile(), parsed.profiles[n]);
+        TOPIC_KEYS.forEach(k=>{
+          parsed.profiles[n].stats[k] = Object.assign(defaultStat(), (parsed.profiles[n].stats||{})[k]);
+        });
+        fresh.profiles[n] = parsed.profiles[n];
+      }
+    });
+    if(parsed.settings && parsed.settings.pin) fresh.settings.pin = parsed.settings.pin;
+    return fresh;
+  }catch(e){ return defaultState(); }
+}
+function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+function curProfile(){ return state.profiles[state.currentProfile]; }
+
+const app = document.getElementById("app");
+let view = {name:"profileSelect"};
+let sessionTimerStart = null;
+
+function logTime(profileName){
+  if(sessionTimerStart==null) return;
+  const mins = (Date.now()-sessionTimerStart)/60000;
+  if(mins <= 0) return;
+  const p = state.profiles[profileName];
+  const d = todayStr();
+  p.timeLog[d] = Math.round(((p.timeLog[d]||0) + mins)*10)/10;
+  sessionTimerStart = Date.now();
+  saveState();
+}
+
+function goto(v){
+  if(view.name==="task" && v.name!=="task") logTime(state.currentProfile);
+  view = v;
+  render();
+}
+
+function initSky(){
+  const sky = document.getElementById("sky");
+  let html = "";
+  for(let i=0;i<28;i++){
+    const left = rand(0,100), top = rand(0,100), size = rand(10,22), delay = (Math.random()*3).toFixed(2);
+    html += `<div class="twinkle" style="left:${left}%; top:${top}%; font-size:${size}px; animation-delay:${delay}s;">✦</div>`;
+  }
+  sky.innerHTML = html;
+}
+
+function horseEmojiSpan(horse, profile, size){
+  const cls = size==="small" ? "horse-emoji small" : "horse-emoji";
+  let filter = "";
+  const equip = profile ? (profile.horseEquip[horse.id]||{}) : {};
+  const maneId = equip.mane;
+  const mane = ACCESSORIES.find(a=>a.id===maneId);
+  let hue = horse.hue;
+  if(mane){ hue = mane.hue; }
+  if(hue==="rainbow"){
+    filter = "style=\"filter:saturate(2); animation:rainbowHue 3s linear infinite;\"";
+  } else if(typeof hue === "number"){
+    filter = `style="filter:hue-rotate(${hue}deg) saturate(1.3);"`;
+  }
+  const saddleId = equip.saddle;
+  const saddle = ACCESSORIES.find(a=>a.id===saddleId);
+  const badge = saddle ? `<span style="position:relative; left:-14px; font-size:.4em;">${saddle.emoji}</span>` : "";
+  return `<span class="${cls}" ${filter}>${horse.emoji}</span>${badge}`;
+}
+
+if(!document.getElementById("rainbowKF")){
+  const st = document.createElement("style");
+  st.id = "rainbowKF";
+  st.textContent = "@keyframes rainbowHue{ from{filter:hue-rotate(0deg) saturate(2);} to{filter:hue-rotate(360deg) saturate(2);} }";
+  document.head.appendChild(st);
+}
+
+function render(){
+  app.innerHTML = "";
+  if(view.name==="profileSelect") return renderProfileSelect();
+  if(view.name==="home") return renderHome();
+  if(view.name==="chapterIntro") return renderChapterIntro();
+  if(view.name==="task") return renderTask();
+  if(view.name==="reward") return renderReward();
+  if(view.name==="stall") return renderStall();
+  if(view.name==="parentPin") return renderParentPin();
+  if(view.name==="parentDash") return renderParentDash();
+}
+
+function topBar(profileName){
+  const p = state.profiles[profileName];
+  const div = document.createElement("div");
+  div.className = "topbar";
+  div.innerHTML = `
+    <div class="brand">✨ Magisches Gestüt</div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div class="starcount">⭐ ${p.stars}</div>
+      <button class="gear" id="gearBtn" title="Elternbereich">⚙️</button>
+    </div>`;
+  app.appendChild(div);
+  div.querySelector("#gearBtn").onclick = ()=> goto({name:"parentPin"});
+}
+
+function renderProfileSelect(){
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <div class="panel">
+      <h1>🦄 Willkommen im magischen Gestüt!</h1>
+      <p>Wer bist du heute?</p>
+      <div class="profile-grid">
+        ${PROFILE_NAMES.map(n=>`
+          <div class="profile-card">
+            <div class="emoji">${n==="Mira"?"🧙‍♀️":"🧝‍♀️"}</div>
+            <div style="font-size:22px; font-weight:800;">${n}</div>
+            <button class="btn" data-profile="${n}">Los geht's!</button>
+          </div>`).join("")}
+      </div>
+    </div>
+    <div style="margin-top:18px;"><button class="btn ghost" id="parentBtn">⚙️ Elternbereich</button></div>
+  `;
+  app.appendChild(wrap);
+  wrap.querySelectorAll("[data-profile]").forEach(btn=>{
+    btn.onclick = ()=>{
+      state.currentProfile = btn.dataset.profile;
+      sessionTimerStart = Date.now();
+      saveState();
+      goto({name:"home"});
+    };
+  });
+  wrap.querySelector("#parentBtn").onclick = ()=> goto({name:"parentPin", fromProfileSelect:true});
+}
+
+function chapterUnlocked(idx, profile){
+  if(idx===0) return true;
+  const prev = CHAPTERS[idx-1];
+  return !!profile.chapterProgress[prev.id];
+}
+function chapterTopicEnabled(chapter, profile){
+  if(chapter.mainTopic==="mixed") return true;
+  return profile.topicsEnabled[chapter.mainTopic];
+}
+
+function renderHome(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  const doneCount = CHAPTERS.filter(c=>profile.chapterProgress[c.id]).length;
+  wrap.innerHTML = `
+    <h1>Hallo, ${state.currentProfile}! 🌟</h1>
+    <p>${doneCount} von ${CHAPTERS.length} Kapiteln geschafft. Wähle dein nächstes Abenteuer:</p>
+    <div class="chapter-grid" id="chapterGrid"></div>
+    <div class="footer-nav">
+      <button class="btn secondary" id="toStall">🏠 Zum Stall</button>
+      <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const grid = wrap.querySelector("#chapterGrid");
+  CHAPTERS.forEach((c, idx)=>{
+    const unlocked = chapterUnlocked(idx, profile);
+    const enabled = chapterTopicEnabled(c, profile);
+    const done = !!profile.chapterProgress[c.id];
+    const card = document.createElement("div");
+    card.className = "chapter-card" + (!unlocked||!enabled?" locked":"") + (done?" done":"");
+    const topicLabel = c.mainTopic==="mixed" ? "Alle Themen" : TOPIC_META[c.mainTopic].label;
+    card.innerHTML = `
+      ${done?'<div class="chapter-badge">🐴</div>':""}
+      <div class="chapter-num">Kapitel ${c.id}</div>
+      <div class="chapter-title">${c.title}</div>
+      <div class="chapter-topic">${topicLabel}</div>
+      ${!unlocked?'<div class="small-muted">🔒 Schließe das vorherige Kapitel ab</div>':""}
+      ${unlocked && !enabled?'<div class="small-muted">🔒 Von den Eltern deaktiviert</div>':""}
+      ${unlocked && enabled?`<button class="btn wide" data-chapter="${c.id}">${done?"Nochmal spielen":"Start"}</button>`:""}
+    `;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll("[data-chapter]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const chapter = CHAPTERS.find(c=>c.id===Number(btn.dataset.chapter));
+      goto({name:"chapterIntro", chapterId:chapter.id});
+    };
+  });
+  wrap.querySelector("#toStall").onclick = ()=> goto({name:"stall"});
+  wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
+}
+
+function renderChapterIntro(){
+  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <div class="story-box">
+      <div class="chapter-num">Kapitel ${chapter.id}</div>
+      <h1>${chapter.title}</h1>
+      <div class="horse-emoji">🌙✨</div>
+      <p>${chapter.intro}</p>
+      <button class="btn" id="startTasks">Abenteuer beginnen</button>
+      <button class="btn ghost" id="backHome">Zurück</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  wrap.querySelector("#startTasks").onclick = ()=>{
+    const topics = buildTaskTopics(chapter, curProfile());
+    goto({name:"task", chapterId:chapter.id, taskIndex:0, topics, correctFirstTryStreak:0, chapterStars:0, wrongThisTask:false});
+  };
+  wrap.querySelector("#backHome").onclick = ()=> goto({name:"home"});
+}
+
+function buildTaskTopics(chapter, profile){
+  function fallback(t){
+    if(profile.topicsEnabled[t]) return t;
+    const alt = TOPIC_KEYS.find(k=>profile.topicsEnabled[k]);
+    return alt || t;
+  }
+  if(chapter.mainTopic==="textaufgaben"){
+    return new Array(TASKS_PER_CHAPTER).fill("textaufgaben").map(fallback);
+  }
+  if(chapter.mainTopic==="mixed"){
+    const base = ["einmaleins","einmaleins","zahlenraum","zahlenraum","textaufgaben","textaufgaben","uhrzeitGroessen","uhrzeitGroessen","textaufgaben"];
+    return shuffle(base.map(fallback));
+  }
+  const arr = [];
+  for(let i=0;i<7;i++) arr.push(fallback(chapter.mainTopic));
+  arr.push(fallback("textaufgaben"));
+  arr.push(fallback("textaufgaben"));
+  return shuffle(arr);
+}
+
+// ---------- Task generators ----------
+
+function makeOptions(correct, distractorPool){
+  const cands = uniq(distractorPool.filter(n=> n!==correct && n>=0));
+  const chosen = shuffle(cands).slice(0,3);
+  while(chosen.length<3){
+    const fallback = correct + (chosen.length+1)*(Math.random()<0.5?-1:1)*rand(1,4);
+    if(fallback>=0 && fallback!==correct && !chosen.includes(fallback)) chosen.push(fallback);
+    else chosen.push(correct + 100 + chosen.length);
+  }
+  const options = shuffle([correct, ...chosen]).map(v=>({text:String(v), correct:v===correct}));
+  return options;
+}
+
+function genEinmaleins(level){
+  const pools = {1:[1,2,10], 2:[1,2,5,10], 3:[2,3,4,5,10], 4:[3,4,6,7,10], 5:[6,7,8,9]};
+  const pool = pools[level]||pools[3];
+  const a = pick(pool);
+  const b = rand(1,10);
+  const product = a*b;
+  if(level>=5 && Math.random()<0.4){
+    const missing = Math.random()<0.5 ? "a" : "b";
+    const known = missing==="a" ? b : a;
+    const answer = missing==="a" ? a : b;
+    return {
+      topic:"einmaleins", level,
+      prompt: missing==="a" ? `? × ${known} = ${product}` : `${known} × ? = ${product}`,
+      sub:"Welche Zahl fehlt?",
+      options: makeOptions(answer, [answer+1,answer-1,answer+2,answer-2,answer+3].filter(n=>n>=1&&n<=10)),
+      hint:`Denk an die ${known}er-Reihe: Bei welcher Zahl kommt man auf ${product}?`
+    };
+  }
+  return {
+    topic:"einmaleins", level,
+    prompt:`${a} × ${b} = ?`,
+    sub:"",
+    options: makeOptions(product, [product+a, product-a, product+b, product-b, a*(b+1), a*Math.max(1,b-1), product+10, product-10]),
+    hint:`Zähle in ${a}er-Schritten: ${Array.from({length:b},(_,i)=>a*(i+1)).join(", ")}.`
+  };
+}
+
+function genZahlenraum(level){
+  const cfg = {1:{max:100},2:{max:100},3:{max:500},4:{max:1000},5:{max:1000}}[level] || {max:500};
+  const op = Math.random()<0.5 ? "+" : "-";
+  let a = rand(10, cfg.max);
+  let b = rand(10, cfg.max);
+  if(op==="-" && b>a){ const t=a; a=b; b=t; }
+  const answer = op==="+" ? a+b : a-b;
+  return {
+    topic:"zahlenraum", level,
+    prompt:`${a} ${op} ${b} = ?`,
+    sub:"",
+    options: makeOptions(answer, [answer+1,answer-1,answer+10,answer-10,answer+2,answer-2,answer+100,answer-100]),
+    hint: op==="+" ? `Rechne erst die Zehner, dann die Einer: ${a} + ${b}.` : `Rechne in Schritten zurück: von ${a} erst die Zehner, dann die Einer von ${b} abziehen.`
+  };
+}
+
+const THEME_WORDS = {
+  apples:{obj:"Äpfel", subj:"Pferde", verbGive:"bekommen"},
+  potions:{obj:"Tropfen Zaubertrank", subj:"Kessel", verbGive:"brauchen"},
+  stars:{obj:"Sterne", subj:"Laternen", verbGive:"leuchten mit"},
+  coins:{obj:"Goldmünzen", subj:"Truhen", verbGive:"liegen in"},
+  time:{obj:"Minuten", subj:"Sanduhren", verbGive:"laufen in"}
+};
+
+function genTextaufgaben(level, theme){
+  const words = THEME_WORDS[theme] || THEME_WORDS.apples;
+  const templates = [];
+  if(level<=2){
+    templates.push(()=>{
+      const a = rand(3,15), b = rand(3,15);
+      return {q:`${a} ${words.obj} liegen im Korb. ${b} weitere ${words.obj} kommen dazu. Wie viele ${words.obj} sind es jetzt?`, ans:a+b, hint:`Zähle einfach weiter: ${a} und dann noch ${b} dazu.`};
+    });
+    templates.push(()=>{
+      const a = rand(10,20), b = rand(2,a-1);
+      return {q:`Du hast ${a} ${words.obj}. Du gibst ${b} an ein Pferd. Wie viele ${words.obj} bleiben übrig?`, ans:a-b, hint:`Zähle von ${a} rückwärts um ${b}.`};
+    });
+  } else if(level===3){
+    templates.push(()=>{
+      const a = rand(20,60), b = rand(15,40);
+      return {q:`Auf der ersten Weide stehen ${a} ${words.obj}, auf der zweiten ${b}. Wie viele ${words.obj} sind es zusammen?`, ans:a+b, hint:`Addiere zuerst die Zehner, dann die Einer.`};
+    });
+    templates.push(()=>{
+      const perHorse = rand(2,5), horses = rand(3,6);
+      return {q:`Jedes der ${horses} Pferde ${words.verbGive} ${perHorse} ${words.obj}. Wie viele ${words.obj} braucht man insgesamt?`, ans:perHorse*horses, hint:`Das ist ${horses} mal ${perHorse}.`};
+    });
+  } else if(level===4){
+    templates.push(()=>{
+      const perHorse = rand(3,9), horses = rand(4,9);
+      return {q:`Ein Pferd braucht ${perHorse} ${words.obj} pro Tag. Wie viele ${words.obj} brauchen ${horses} Pferde an einem Tag?`, ans:perHorse*horses, hint:`Rechne ${horses} × ${perHorse} mit der Einmaleins-Reihe von ${perHorse}.`};
+    });
+    templates.push(()=>{
+      const a = rand(100,400), b = rand(50,300);
+      return {q:`In der Schatzkammer liegen ${a} ${words.obj}. Es kommen ${b} dazu. Wie viele sind es jetzt?`, ans:a+b, hint:`Addiere erst die Hunderter, dann Zehner und Einer.`};
+    });
+  } else {
+    templates.push(()=>{
+      const a = rand(200,700), b = rand(80,300), c = rand(20,150);
+      return {q:`Du hast ${a} ${words.obj}. Du bekommst ${b} dazu, gibst aber ${c} wieder ab. Wie viele ${words.obj} hast du am Ende?`, ans:a+b-c, hint:`Rechne Schritt für Schritt: erst ${a} + ${b}, dann davon ${c} abziehen.`};
+    });
+    templates.push(()=>{
+      const perHorse = rand(6,9), horses = rand(6,9);
+      return {q:`${horses} Pferde bekommen je ${perHorse} ${words.obj}. Wie viele ${words.obj} sind das insgesamt?`, ans:perHorse*horses, hint:`Nutze die ${perHorse}er-Reihe: ${horses} mal ${perHorse}.`};
+    });
+  }
+  const t = pick(templates)();
+  return {
+    topic:"textaufgaben", level,
+    prompt:t.q,
+    sub:"",
+    options: makeOptions(t.ans, [t.ans+1,t.ans-1,t.ans+2,t.ans-2,t.ans+10,t.ans-10,t.ans*1+5]),
+    hint:t.hint
+  };
+}
+
+function timeString(h,m){
+  const hh = ((h-1)%12)+1;
+  return `${hh}:${String(m).padStart(2,"0")} Uhr`;
+}
+function clockSVG(h,m){
+  const minuteAngle = m*6;
+  const hourAngle = (h%12)*30 + m*0.5;
+  return `<svg class="clock-svg" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="46" fill="#fff8e8" stroke="#5c4a8a" stroke-width="3"/>
+    ${Array.from({length:12},(_,i)=>{
+      const ang = i*30*Math.PI/180; const x1=50+40*Math.sin(ang), y1=50-40*Math.cos(ang), x2=50+45*Math.sin(ang), y2=50-45*Math.cos(ang);
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2a1c4f" stroke-width="2"/>`;
+    }).join("")}
+    <line x1="50" y1="50" x2="${50+22*Math.sin(hourAngle*Math.PI/180)}" y2="${50-22*Math.cos(hourAngle*Math.PI/180)}" stroke="#2a1c4f" stroke-width="5" stroke-linecap="round"/>
+    <line x1="50" y1="50" x2="${50+34*Math.sin(minuteAngle*Math.PI/180)}" y2="${50-34*Math.cos(minuteAngle*Math.PI/180)}" stroke="#e8ad2f" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="4" fill="#2a1c4f"/>
+  </svg>`;
+}
+
+function genUhrzeitGroessen(level){
+  if(level<=3){
+    const minuteOptions = level===1 ? [0,30] : level===2 ? [0,15,30,45] : [0,5,10,15,20,25,30,35,40,45,50,55];
+    const h = rand(1,12);
+    const m = pick(minuteOptions);
+    const correct = timeString(h,m);
+    const distractorTimes = uniq([
+      timeString(h%12+1, m), timeString(((h-2+12)%12)+1, m),
+      timeString(h, (m+15)%60), timeString(h, (m+30)%60===m?((m+45)%60):(m+30)%60),
+      timeString(h%12+1, (m+15)%60)
+    ]).filter(t=>t!==correct);
+    const options = shuffle([correct, ...shuffle(distractorTimes).slice(0,3)]).map(t=>({text:t, correct:t===correct}));
+    return {
+      topic:"uhrzeitGroessen", level,
+      prompt:"Wie viel Uhr ist es?",
+      sub:"", visual:clockSVG(h,m),
+      options,
+      hint:`Der kurze Zeiger zeigt auf die Stunde (${((h-1)%12)+1}), der lange Zeiger auf die Minuten.`
+    };
+  }
+  const isMoney = level===4 || Math.random()<0.5;
+  if(isMoney){
+    const price = rand(2,9), count = rand(2,5);
+    const total = price*count;
+    return {
+      topic:"uhrzeitGroessen", level,
+      prompt:`Ein Zaubertrank kostet ${price} Euro. Wie viel kosten ${count} Zaubertränke?`,
+      sub:"", options: makeOptions(total, [total+price, total-price, total+1, total-1, total+2]),
+      hint:`Rechne ${count} × ${price} Euro.`
+    };
+  }
+  const useCm = Math.random()<0.5;
+  if(useCm){
+    const m = rand(2,8);
+    const cm = m*100 + pick([0,0,50]);
+    return {
+      topic:"uhrzeitGroessen", level,
+      prompt:`Wie viele Zentimeter sind ${m} Meter${cm%100? " und "+ (cm%100) +" cm":""}?`,
+      sub:"", options: makeOptions(cm, [cm+10,cm-10,cm+100,cm-100,m*10]),
+      hint:`1 Meter sind 100 Zentimeter. ${m} × 100 = ${m*100}.`
+    };
+  }
+  const kg = rand(2,9);
+  const g = kg*1000;
+  return {
+    topic:"uhrzeitGroessen", level,
+    prompt:`Wie viele Gramm sind ${kg} Kilogramm?`,
+    sub:"", options: makeOptions(g, [g+100,g-100,g+1000,g-1000,kg*100]),
+    hint:`1 Kilogramm sind 1000 Gramm. ${kg} × 1000 = ${g}.`
+  };
+}
+
+function generateTask(topic, level, theme){
+  if(topic==="einmaleins") return genEinmaleins(level);
+  if(topic==="zahlenraum") return genZahlenraum(level);
+  if(topic==="textaufgaben") return genTextaufgaben(level, theme);
+  return genUhrzeitGroessen(level);
+}
+
+// ---------- Task rendering & adaptive logic ----------
+
+function clampLevel(l){ return Math.max(1, Math.min(5, l)); }
+
+function renderTask(){
+  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const idx = view.taskIndex;
+  if(idx >= view.topics.length){
+    return goto({name:"reward", chapterId:chapter.id, chapterStars:view.chapterStars});
+  }
+  const topic = view.topics[idx];
+  const level = profile.stats[topic].level;
+  if(!view.currentTask || view.currentTaskTopic!==topic){
+    view.currentTask = generateTask(topic, level, chapter.theme);
+    view.currentTaskTopic = topic;
+    view.attemptFailed = false;
+  }
+  const task = view.currentTask;
+
+  const wrap = document.createElement("div");
+  wrap.className = "task-wrap";
+  const dots = view.topics.map((t,i)=>{
+    let cls = "progress-dot";
+    if(i<idx) cls+=" done";
+    else if(i===idx) cls+=" current";
+    return `<div class="${cls}"></div>`;
+  }).join("");
+  wrap.innerHTML = `
+    <div class="progress-row">${dots}</div>
+    <div class="question-card">
+      <div class="chapter-topic">${TOPIC_META[topic].emoji} ${TOPIC_META[topic].label} · Stufe ${level}</div>
+      ${task.visual?`<div>${task.visual}</div>`:""}
+      <div class="question-text">${task.prompt}</div>
+      ${task.sub?`<div class="question-sub">${task.sub}</div>`:""}
+      <div class="options-grid" id="optionsGrid"></div>
+      <div id="hintSlot"></div>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const grid = wrap.querySelector("#optionsGrid");
+  task.options.forEach(opt=>{
+    const b = document.createElement("button");
+    b.className = "opt-btn";
+    b.textContent = opt.text;
+    b.onclick = ()=> handleAnswer(opt.correct, b, wrap);
+    grid.appendChild(b);
+  });
+}
+
+function handleAnswer(isCorrect, btnEl, wrapEl){
+  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  const profile = curProfile();
+  const topic = view.currentTaskTopic;
+  const statObj = profile.stats[topic];
+  const grid = wrapEl.querySelector("#optionsGrid");
+  grid.querySelectorAll("button").forEach(b=> b.disabled = true);
+
+  if(isCorrect){
+    btnEl.classList.add("correct-flash");
+    const firstTry = !view.attemptFailed;
+    if(firstTry){
+      statObj.correctStreak++; statObj.wrongStreak = 0;
+      statObj.correct++;
+      if(statObj.correctStreak>=3){ statObj.level = clampLevel(statObj.level+1); statObj.correctStreak=0; }
+    } else {
+      statObj.correct++;
+    }
+    const starsGained = firstTry ? 2 : 1;
+    profile.stars += starsGained;
+    view.chapterStars += starsGained;
+    saveState();
+    flyStars(btnEl, starsGained);
+    setTimeout(()=>{
+      view.taskIndex++;
+      view.currentTask = null;
+      render();
+    }, 650);
+  } else {
+    btnEl.classList.add("try-again");
+    if(!view.attemptFailed){
+      view.attemptFailed = true;
+      statObj.wrong++;
+      statObj.wrongStreak++; statObj.correctStreak = 0;
+      if(statObj.wrongStreak>=2){ statObj.level = clampLevel(statObj.level-1); statObj.wrongStreak=0; }
+      saveState();
+    }
+    const hintSlot = wrapEl.querySelector("#hintSlot");
+    hintSlot.innerHTML = `
+      <div class="hint-bubble">
+        <span class="horse-emoji">${chapter.horse.emoji}</span>
+        <div><b>${chapter.horse.name} flüstert einen Tipp:</b>${view.currentTask.hint}<br><span class="small-muted">Versuch es gleich nochmal – du schaffst das! 💪</span></div>
+      </div>`;
+    setTimeout(()=>{
+      grid.querySelectorAll("button").forEach(b=>{
+        b.disabled = false;
+        b.classList.remove("try-again");
+      });
+    }, 900);
+  }
+}
+
+function flyStars(fromEl, count){
+  const rect = fromEl.getBoundingClientRect();
+  const target = document.querySelector(".starcount");
+  const trect = target ? target.getBoundingClientRect() : {left:window.innerWidth-60, top:20};
+  for(let i=0;i<count;i++){
+    const s = document.createElement("div");
+    s.className = "star-fly";
+    s.textContent = "⭐";
+    s.style.left = (rect.left+rect.width/2)+"px";
+    s.style.top = (rect.top+rect.height/2)+"px";
+    s.style.setProperty("--dx", (trect.left - rect.left)+"px");
+    s.style.setProperty("--dy", (trect.top - rect.top)+"px");
+    document.body.appendChild(s);
+    setTimeout(()=> s.remove(), 1050);
+  }
+}
+
+function renderReward(){
+  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  const profile = curProfile();
+  const alreadyDone = !!profile.chapterProgress[chapter.id];
+  if(!alreadyDone){
+    profile.chapterProgress[chapter.id] = true;
+    profile.horses.push({id:"horse_"+chapter.id, name:chapter.horse.name, color:chapter.horse.color, emoji:chapter.horse.emoji, hue:chapter.horse.hue, ability:chapter.horse.ability});
+    saveState();
+  }
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <div class="reward-scene">
+      <div class="horse-emoji gallop" style="${typeof chapter.horse.hue==='number'?`filter:hue-rotate(${chapter.horse.hue}deg) saturate(1.3);`:'animation:rainbowHue 3s linear infinite, gallop 1.4s ease-in-out infinite;'}">${chapter.horse.emoji}</div>
+      <h1>Geschafft! 🎉</h1>
+      <p>${chapter.reward}</p>
+      <p><b>${chapter.horse.name}</b> (${chapter.horse.color}) ist jetzt frei und lebt in deinem Stall!<br>Magische Fähigkeit: ${chapter.horse.ability}</p>
+      <p>⭐ Du hast diesmal <b>${view.chapterStars}</b> Sterne gesammelt!</p>
+      <div class="footer-nav">
+        <button class="btn" id="toStallBtn">🏠 Ab in den Stall</button>
+        <button class="btn secondary" id="toHomeBtn">🗺️ Weitere Kapitel</button>
+      </div>
+    </div>
+  `;
+  app.appendChild(wrap);
+  spawnConfetti();
+  wrap.querySelector("#toStallBtn").onclick = ()=> goto({name:"stall"});
+  wrap.querySelector("#toHomeBtn").onclick = ()=> goto({name:"home"});
+}
+
+function spawnConfetti(){
+  const emojis = ["⭐","✨","🌟","💫"];
+  for(let i=0;i<20;i++){
+    const c = document.createElement("div");
+    c.className = "confetti";
+    c.textContent = pick(emojis);
+    c.style.left = rand(0,100)+"vw";
+    c.style.fontSize = rand(14,26)+"px";
+    c.style.animationDuration = (rand(18,32)/10)+"s";
+    document.body.appendChild(c);
+    setTimeout(()=> c.remove(), 3500);
+  }
+}
+
+function renderStall(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <h1>🏠 Dein Stall</h1>
+    <p>${profile.horses.length} von ${CHAPTERS.length} Pferden befreit</p>
+    <div class="stall-grid" id="stallGrid"></div>
+    <div class="footer-nav"><button class="btn secondary" id="backHome">🗺️ Zu den Kapiteln</button></div>
+  `;
+  app.appendChild(wrap);
+  const grid = wrap.querySelector("#stallGrid");
+  if(profile.horses.length===0){
+    grid.innerHTML = `<p class="small-muted">Noch kein Pferd befreit – starte ein Kapitel!</p>`;
+  }
+  profile.horses.forEach(horse=>{
+    const card = document.createElement("div");
+    card.className = "horse-card";
+    card.innerHTML = `
+      ${horseEmojiSpan(horse, profile)}
+      <div class="name">${horse.name}</div>
+      <div class="small-muted">${horse.color}</div>
+      <div class="ability">${horse.ability}</div>
+      <div class="swatch-row" data-manes></div>
+      <div class="swatch-row" data-saddles></div>
+    `;
+    grid.appendChild(card);
+    const equip = profile.horseEquip[horse.id] || {};
+    const maneRow = card.querySelector("[data-manes]");
+    ACCESSORIES.filter(a=>a.type==="mane").forEach(acc=>{
+      const owned = profile.ownedAccessories.includes(acc.id);
+      const sw = document.createElement("button");
+      sw.className = "swatch" + (owned?"":" locked") + (equip.mane===acc.id?" selected":"");
+      sw.style.background = acc.hue==="rainbow" ? acc.swatch : acc.swatch;
+      sw.title = owned ? acc.name : `${acc.name} (⭐${acc.cost})`;
+      sw.textContent = owned ? "" : "🔒";
+      sw.onclick = ()=> ownedOrBuy(acc, horse, profile, "mane");
+      maneRow.appendChild(sw);
+    });
+    const saddleRow = card.querySelector("[data-saddles]");
+    ACCESSORIES.filter(a=>a.type==="saddle").forEach(acc=>{
+      const owned = profile.ownedAccessories.includes(acc.id);
+      const sw = document.createElement("button");
+      sw.className = "badge-emoji" + (owned?"":" locked") + (equip.saddle===acc.id?" selected":"");
+      sw.title = owned ? acc.name : `${acc.name} (⭐${acc.cost})`;
+      sw.textContent = owned ? acc.emoji : "🔒";
+      sw.onclick = ()=> ownedOrBuy(acc, horse, profile, "saddle");
+      saddleRow.appendChild(sw);
+    });
+  });
+  wrap.querySelector("#backHome").onclick = ()=> goto({name:"home"});
+}
+
+function ownedOrBuy(acc, horse, profile, slot){
+  const owned = profile.ownedAccessories.includes(acc.id);
+  if(!owned){
+    if(profile.stars < acc.cost){
+      alert(`Du brauchst noch ${acc.cost - profile.stars} Sterne für "${acc.name}". Sammle weiter fleißig! ⭐`);
+      return;
+    }
+    if(!confirm(`"${acc.name}" für ${acc.cost} Sterne freischalten?`)) return;
+    profile.stars -= acc.cost;
+    profile.ownedAccessories.push(acc.id);
+  }
+  if(!profile.horseEquip[horse.id]) profile.horseEquip[horse.id] = {};
+  if(profile.horseEquip[horse.id][slot] === acc.id){
+    profile.horseEquip[horse.id][slot] = null;
+  } else {
+    profile.horseEquip[horse.id][slot] = acc.id;
+  }
+  saveState();
+  goto({name:"stall"});
+}
+
+// ---------- Parent area ----------
+
+function renderParentPin(){
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  let entered = "";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>⚙️ Elternbereich</h2>
+      <p>Bitte gib die PIN ein.</p>
+      <div class="pin-dots" id="pinDots">${"".padStart(4,"0").split("").map(()=>'<div class="pin-dot"></div>').join("")}</div>
+      <div class="keypad" id="keypad"></div>
+      <div class="footer-nav" style="margin-top:14px;"><button class="btn ghost" id="cancelPin">Abbrechen</button></div>
+    </div>
+  `;
+  app.appendChild(overlay);
+  const dotsEl = overlay.querySelector("#pinDots");
+  const keypad = overlay.querySelector("#keypad");
+  function refreshDots(){
+    dotsEl.querySelectorAll(".pin-dot").forEach((d,i)=> d.classList.toggle("filled", i<entered.length));
+  }
+  ["1","2","3","4","5","6","7","8","9","⌫","0","OK"].forEach(k=>{
+    const b = document.createElement("button");
+    b.textContent = k;
+    b.onclick = ()=>{
+      if(k==="⌫"){ entered = entered.slice(0,-1); refreshDots(); return; }
+      if(k==="OK"){
+        if(entered === state.settings.pin){
+          overlay.remove();
+          goto({name:"parentDash"});
+        } else {
+          entered = "";
+          refreshDots();
+          overlay.querySelector(".modal").style.animation = "none";
+          alert("Das war nicht die richtige PIN. Versuch es nochmal.");
+        }
+        return;
+      }
+      if(entered.length<4){ entered += k; refreshDots(); if(entered.length===4){ /* wait for OK */ } }
+    };
+    keypad.appendChild(b);
+  });
+  overlay.querySelector("#cancelPin").onclick = ()=>{
+    overlay.remove();
+    if(view.fromProfileSelect || !state.currentProfile) goto({name:"profileSelect"});
+    else render();
+  };
+}
+
+let parentDashTab = PROFILE_NAMES[0];
+function renderParentDash(){
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal" id="dashModal"></div>`;
+  app.appendChild(overlay);
+  drawDash(overlay.querySelector("#dashModal"));
+}
+
+function drawDash(modal){
+  const profile = state.profiles[parentDashTab];
+  const totalToday = profile.timeLog[todayStr()] || 0;
+  const last7 = [];
+  for(let i=6;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    last7.push({key, mins: profile.timeLog[key]||0});
+  }
+  modal.innerHTML = `
+    <h2>⚙️ Elternbereich</h2>
+    <div class="tabs">
+      ${PROFILE_NAMES.map(n=>`<div class="tab ${n===parentDashTab?"active":""}" data-tab="${n}">${n}</div>`).join("")}
+    </div>
+    <h2 style="font-size:19px;">Themen &amp; Fortschritt</h2>
+    ${TOPIC_KEYS.map(k=>{
+      const s = profile.stats[k];
+      const total = s.correct+s.wrong;
+      const errRate = total>0 ? Math.round((s.wrong/total)*100) : 0;
+      return `
+      <div class="stat-row">
+        <div><b>${TOPIC_META[k].emoji} ${TOPIC_META[k].label}</b><br>
+        <span class="pill">Stufe ${s.level}/5</span> <span class="pill">✅ ${s.correct}</span> <span class="pill">❌ ${s.wrong}</span> <span class="pill">Fehlerquote ${errRate}%</span></div>
+        <div class="toggle ${profile.topicsEnabled[k]?"on":""}" data-toggle="${k}"><div class="knob"></div></div>
+      </div>`;
+    }).join("")}
+    <h2 style="font-size:19px; margin-top:16px;">Übungszeit (heute: ${totalToday} Min.)</h2>
+    <div class="stat-row" style="flex-direction:column; align-items:stretch;">
+      ${last7.map(d=>`<div style="display:flex; justify-content:space-between; padding:3px 0;"><span>${d.key.slice(5)}</span><span>${d.mins} Min.</span></div>`).join("")}
+    </div>
+    <h2 style="font-size:19px; margin-top:16px;">PIN ändern</h2>
+    <div class="stat-row">
+      <input type="text" inputmode="numeric" maxlength="4" id="newPin" placeholder="Neue 4-stellige PIN" style="max-width:200px;">
+      <button class="btn secondary" id="savePin">Speichern</button>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="closeDash">Fertig</button>
+    </div>
+  `;
+  modal.querySelectorAll("[data-tab]").forEach(t=>{
+    t.onclick = ()=>{ parentDashTab = t.dataset.tab; drawDash(modal); };
+  });
+  modal.querySelectorAll("[data-toggle]").forEach(t=>{
+    t.onclick = ()=>{
+      const k = t.dataset.toggle;
+      profile.topicsEnabled[k] = !profile.topicsEnabled[k];
+      saveState();
+      drawDash(modal);
+    };
+  });
+  modal.querySelector("#savePin").onclick = ()=>{
+    const val = modal.querySelector("#newPin").value.trim();
+    if(/^\d{4}$/.test(val)){
+      state.settings.pin = val;
+      saveState();
+      alert("Neue PIN gespeichert!");
+    } else {
+      alert("Bitte genau 4 Ziffern eingeben.");
+    }
+  };
+  modal.querySelector("#closeDash").onclick = ()=>{
+    modal.closest(".modal-overlay").remove();
+    if(!state.currentProfile) goto({name:"profileSelect"});
+    else render();
+  };
+}
+
+initSky();
+render();
+
+window.addEventListener("beforeunload", ()=>{
+  if(state.currentProfile) logTime(state.currentProfile);
+});
+
+})();
+</script>
+</body>
+</html>
