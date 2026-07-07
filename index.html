@@ -195,10 +195,27 @@
   }
   input[type="number"], input[type="text"], select{font-size:20px; padding:12px; border-radius:12px; border:2px solid #ccc; width:100%; background:#fff; color:var(--ink);}
   .small-muted{font-size:13px; opacity:.75;}
+
+  .update-banner{
+    position:fixed; top:0; left:0; right:0; z-index:300;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    background:linear-gradient(90deg, var(--bg2), var(--bg3));
+    color:#fff; padding:12px 18px; font-size:15px; font-weight:700;
+    box-shadow:0 4px 16px rgba(0,0,0,.4);
+    transform:translateY(-100%); transition:transform .4s ease;
+    flex-wrap:wrap; text-align:center;
+  }
+  .update-banner.show{ transform:translateY(0); }
+  .update-banner button{
+    background:var(--gold); color:var(--ink); font-weight:800; border:none; border-radius:14px;
+    padding:8px 18px; font-size:14px; min-height:auto; box-shadow:none;
+  }
+  .update-banner button:disabled{ opacity:.6; }
 </style>
 </head>
 <body>
 <div class="sky" id="sky"></div>
+<div class="update-banner" id="updateBanner"></div>
 <div id="app"></div>
 <div class="portrait-hint">
   <div style="font-size:60px;">📱↔️</div>
@@ -209,6 +226,10 @@
 <script>
 (function(){
 "use strict";
+
+// WICHTIG: Bei jeder Code-Änderung sowohl hier als auch in version.json
+// und in sw.js (APP_VERSION/CACHE_NAME) die Versionsnummer erhöhen.
+const APP_VERSION = "1.0.0";
 
 const STORAGE_KEY = "magischesGestuetV1";
 const PROFILE_SLOTS = ["child1","child2","child3"];
@@ -222,13 +243,35 @@ const SUBJECTS = {
 };
 const SUBJECT_KEYS = Object.keys(SUBJECTS);
 
-const TOPIC_META = {
+const TOPICS_MATHE = {
   einmaleins:{label:"Einmaleins", emoji:"✖️"},
   zahlenraum:{label:"Zahlenraum bis 1000", emoji:"🔢"},
-  textaufgaben:{label:"Textaufgaben", emoji:"📖"},
-  uhrzeitGroessen:{label:"Uhrzeit & Größen", emoji:"⏰"}
+  halbschriftlich:{label:"Halbschriftliches Rechnen", emoji:"➗"},
+  schriftlich:{label:"Schriftliche Addition", emoji:"📝"},
+  malDiv:{label:"Malnehmen & Teilen", emoji:"🔀"},
+  textaufgaben:{label:"Sachaufgaben", emoji:"📖"},
+  uhrzeitGroessen:{label:"Größen", emoji:"⏰"},
+  geometrie:{label:"Geometrie", emoji:"🔺"},
+  daten:{label:"Daten & Diagramme", emoji:"📊"}
 };
-const TOPIC_KEYS = Object.keys(TOPIC_META);
+const TOPICS_DEUTSCH = {
+  rechtschreibung:{label:"Richtig schreiben", emoji:"✏️"},
+  wortarten:{label:"Wortarten", emoji:"🔤"},
+  zeitformen:{label:"Zeitformen", emoji:"⏳"},
+  saetze:{label:"Sätze & Zeichen", emoji:"❓"},
+  lesen:{label:"Lesen & Verstehen", emoji:"📗"},
+  wortschatz:{label:"Wortschatz", emoji:"📚"}
+};
+const TOPICS_HSU = {
+  natur:{label:"Natur & Umwelt", emoji:"🌳"},
+  koerper:{label:"Körper & Gesundheit", emoji:"🍎"},
+  zeitWandel:{label:"Zeit & Wandel", emoji:"🕰️"},
+  raum:{label:"Raum & Mobilität", emoji:"🧭"},
+  gesellschaft:{label:"Demokratie & Gesellschaft", emoji:"🤝"}
+};
+const SUBJECT_TOPICS = { mathe:TOPICS_MATHE, deutsch:TOPICS_DEUTSCH, hsu:TOPICS_HSU };
+function topicsForSubject(subjectKey){ return SUBJECT_TOPICS[subjectKey]; }
+function topicKeysForSubject(subjectKey){ return Object.keys(SUBJECT_TOPICS[subjectKey]); }
 
 const ACCESSORIES = [
   {id:"mane_rosa", type:"mane", name:"Rosa Mähne", cost:8, hue:300, swatch:"#ff8fc7"},
@@ -241,7 +284,7 @@ const ACCESSORIES = [
   {id:"saddle_diamant", type:"saddle", name:"Diamantsattel", cost:35, emoji:"💎"}
 ];
 
-const CHAPTERS = [
+const CHAPTERS_MATHE = [
   {id:1, title:"Das Tor zum verzauberten Gestüt", mainTopic:"einmaleins", theme:"apples",
     intro:"Du stehst vor einem alten, von Ranken überwucherten Tor. Dahinter hörst du leises Wiehern – ein Pferd braucht deine Hilfe! Mit ein bisschen Zauberrechnen kannst du das Tor öffnen.",
     reward:"Das Tor öffnet sich mit einem goldenen Leuchten! Ein wunderschönes Pferd galoppiert dir entgegen.",
@@ -251,11 +294,11 @@ const CHAPTERS = [
     reward:"Die Pferde schnauben zufrieden – und eines von ihnen läuft glücklich zu dir!",
     horse:{name:"Rubin", color:"Rotbraun", emoji:"🐎", hue:340, ability:"heilt kleine Wehwehchen mit einem sanften Schnauben"}},
   {id:3, title:"Der Zahlenwald", mainTopic:"zahlenraum", theme:"stars",
-    intro:"Im Zahlenwald hängen leuchtende Zahlenkugeln zwischen den Bäumen. Nur wer richtig addiert, findet den Weg hindurch.",
+    intro:"Im Zahlenwald hängen leuchtende Zahlenkugeln zwischen den Bäumen. Nur wer Zahlen richtig ordnet und vergleicht, findet den Weg hindurch.",
     reward:"Der Wald öffnet einen geheimen Pfad – und am Ende wartet ein besonderes Pferd auf dich.",
     horse:{name:"Mondschatten", color:"Mitternachtsblau", emoji:"🐴", hue:220, ability:"wird im Mondlicht fast unsichtbar"}},
   {id:4, title:"Die Turmuhr der Zeit", mainTopic:"uhrzeitGroessen", theme:"time",
-    intro:"In einem alten Turm tickt eine riesige, verzauberte Uhr rückwärts. Lies die Zeiten richtig ab, um sie wieder in Ordnung zu bringen.",
+    intro:"In einem alten Turm tickt eine riesige, verzauberte Uhr rückwärts. Lies die Zeiten und Größen richtig ab, um sie wieder in Ordnung zu bringen.",
     reward:"Die Turmuhr schlägt fröhlich – die Zeit läuft wieder richtig! Ein glänzendes Pferd erscheint auf der Treppe.",
     horse:{name:"Sonnenglanz", color:"Goldgelb", emoji:"🐎", hue:45, ability:"lässt am Morgen die Sonne ein bisschen früher scheinen"}},
   {id:5, title:"Die Zaubertrankküche", mainTopic:"textaufgaben", theme:"potions",
@@ -263,18 +306,91 @@ const CHAPTERS = [
     reward:"Der Trank leuchtet lila und duftet nach Beeren – aus dem Dampf tritt ein neues Pferd hervor!",
     horse:{name:"Nebelfee", color:"Flieder-Grau", emoji:"🐴", hue:270, ability:"erschafft weichen Nebel zum Verstecken"}},
   {id:6, title:"Die Schatzkammer der Zahlen", mainTopic:"zahlenraum", theme:"coins",
-    intro:"Tief unter dem Gestüt liegt eine Schatzkammer voller Zahlensteine. Nur wer richtig subtrahiert, öffnet die letzte Tür.",
+    intro:"Tief unter dem Gestüt liegt eine Schatzkammer voller Zahlensteine. Nur wer Nachbarzahlen und Stellenwerte kennt, öffnet die letzte Tür.",
     reward:"Die Tür knarrt auf und gibt den Blick frei auf ein feuriges, funkelndes Pferd.",
     horse:{name:"Feuermähne", color:"Orangerot", emoji:"🐎", hue:20, ability:"spuckt warmes, harmloses Zauberfeuer zum Wärmen"}},
   {id:7, title:"Der Markt von Fabelhausen", mainTopic:"uhrzeitGroessen", theme:"coins",
     intro:"Auf dem bunten Markt von Fabelhausen gibt es alles: Bänder, Hufeisen und Zaubertränke. Rechne mit Euro, Metern und Kilogramm, um die besten Angebote zu finden.",
     reward:"Mit vollen Taschen voller Angebote gehst du weiter – und ein perlmuttschimmerndes Pferd folgt dir.",
     horse:{name:"Perlenglanz", color:"Perlweiß-Rosa", emoji:"🐴", hue:330, ability:"lässt kleine Perlen aus der Mähne regnen"}},
+  {id:9, title:"Die Rechenbrücke der Nebelwächter", mainTopic:"halbschriftlich", theme:"stars",
+    intro:"Eine schmale Brücke aus Nebel führt über eine tiefe Schlucht. Nur wer geschickt in Schritten rechnet, findet auf ihr sicheren Halt.",
+    reward:"Die Nebelbrücke wird fest wie Stein – und ein ruhiges, starkes Pferd tritt aus dem Dunst hervor.",
+    horse:{name:"Sturmwind", color:"Sturmgrau", emoji:"🐴", hue:200, ability:"kann selbst wilde Stürme besänftigen"}},
+  {id:10, title:"Die Schreibstube der Zahlengeister", mainTopic:"schriftlich", theme:"coins",
+    intro:"In einer alten Schreibstube stapeln sich Zahlen übereinander. Die Zahlengeister zeigen dir, wie man Stelle für Stelle sauber addiert.",
+    reward:"Die Tintenfässer leuchten auf, und ein glänzendes Pferd tritt zwischen den Regalen hervor.",
+    horse:{name:"Tintenglanz", color:"Tintenschwarz-Silber", emoji:"🐎", hue:250, ability:"hinterlässt glitzernde Hufspuren wie aus Tinte"}},
+  {id:11, title:"Der Zauberweberhof", mainTopic:"malDiv", theme:"apples",
+    intro:"Auf dem Weberhof stapeln sich Körbe voller Zauberfäden. Nur wer geschickt malnimmt und teilt, kann sie gerecht auf die Webstühle verteilen.",
+    reward:"Die Webstühle klappern fröhlich – und ein kupferrot schimmerndes Pferd galoppiert heran.",
+    horse:{name:"Kupferherz", color:"Kupferrot", emoji:"🐴", hue:15, ability:"spürt versteckte Schätze tief unter der Erde auf"}},
+  {id:12, title:"Der Kristallwald der Formen", mainTopic:"geometrie", theme:"potions",
+    intro:"Im Kristallwald wachsen Formen wie Bäume: Würfel, Kugeln und Zylinder aus reinem Glas. Nur wer Formen und Muster erkennt, findet den Ausgang.",
+    reward:"Die Kristalle erklingen wie Glocken – ein Pferd mit funkelnder Mähne tritt aus dem Wald.",
+    horse:{name:"Kristallmähne", color:"Kristallklar-Blau", emoji:"🐎", hue:190, ability:"lässt ihre Mähne wie tausend kleine Kristalle funkeln"}},
+  {id:13, title:"Die Sternwarte der Zahlen", mainTopic:"daten", theme:"time",
+    intro:"Ganz oben im Turm steht eine Sternwarte voller Tabellen und Diagramme. Nur wer die Zahlen darin richtig liest, öffnet die Kuppel zu den Sternen.",
+    reward:"Die Kuppel öffnet sich zum Sternenhimmel – ein Pferd mit silbernen Augen tritt heraus.",
+    horse:{name:"Silberauge", color:"Sternennacht-Silber", emoji:"🐴", hue:235, ability:"sieht auch in der dunkelsten Nacht den richtigen Weg"}},
   {id:8, title:"Die Große Sternenprüfung", mainTopic:"mixed", theme:"stars",
     intro:"Am höchsten Turm des Gestüts wartet die letzte, größte Prüfung. Alle deine Zauberkünste sind jetzt gefragt!",
     reward:"Der Himmel öffnet sich in allen Farben des Regenbogens. Das letzte, mächtigste Pferd des Gestüts ist endlich frei!",
     horse:{name:"Regenbogenhorn", color:"Regenbogenfarben", emoji:"🦄", hue:"rainbow", ability:"erfüllt einmal am Tag einen kleinen Wunsch"}}
 ];
+
+const CHAPTERS_DEUTSCH = [
+  {id:1, title:"Die Buchstabenwerkstatt", mainTopic:"rechtschreibung",
+    intro:"In der Bibliothek summt eine kleine Werkstatt voller schwebender Buchstaben. Nur wer sie richtig zusammensetzt, weckt die schlafenden Wörter auf.",
+    reward:"Die Buchstaben tanzen fröhlich durch die Luft – ein Pferd mit silbrig glänzender Mähne tritt hervor.",
+    horse:{name:"Silbenklang", color:"Silberlila", emoji:"🐴", hue:280, ability:"flüstert Reime, die sofort im Kopf bleiben"}},
+  {id:2, title:"Der Wortarten-Zirkus", mainTopic:"wortarten",
+    intro:"Im Zirkuszelt der Bibliothek jonglieren bunte Wörter durch die Luft – manche sind Nomen, manche Verben, manche Adjektive. Bring sie in die richtige Reihenfolge!",
+    reward:"Das Zirkuszelt strahlt in allen Farben – ein Pferd mit buntem Schweif springt durch den Vorhang.",
+    horse:{name:"Bunter Schweif", color:"Wiesengrün", emoji:"🐎", hue:100, ability:"verwandelt graue Tage in bunte"}},
+  {id:3, title:"Die Zeitreise-Bibliothek", mainTopic:"zeitformen",
+    intro:"Zwischen zwei Bücherregalen öffnet sich ein Zeitfenster: Auf der einen Seite ist heute, auf der anderen gestern. Nur wer die Zeitformen kennt, findet zurück.",
+    reward:"Das Zeitfenster schließt sich sanft – ein goldbraunes Pferd tritt aus dem Bücherregal.",
+    horse:{name:"Uhrwerk", color:"Goldbraun", emoji:"🐴", hue:45, ability:"kann die Zeit für einen Wimpernschlag anhalten"}},
+  {id:4, title:"Das Satzzeichen-Theater", mainTopic:"saetze",
+    intro:"Auf der kleinen Bühne der Bibliothek proben Punkt, Fragezeichen und Ausrufezeichen ein Theaterstück. Ohne dich wissen sie nicht, wann ihr Auftritt ist.",
+    reward:"Das Theater bricht in Applaus aus – ein feuriges Pferd stürmt auf die Bühne.",
+    horse:{name:"Ausrufer", color:"Bühnenrot", emoji:"🐎", hue:10, ability:"ruft so laut, dass sogar die Blätter rascheln"}},
+  {id:5, title:"Die Geschichtenhöhle", mainTopic:"lesen",
+    intro:"Tief in der Bibliothek liegt eine Höhle voller schwebender Geschichten. Nur wer genau liest und versteht, findet den Ausgang wieder.",
+    reward:"Die Höhle füllt sich mit warmem Licht – ein Pferd mit samtiger Stimme tritt aus dem Schatten.",
+    horse:{name:"Seitenflüsterer", color:"Nachtviolett", emoji:"🐴", hue:260, ability:"erzählt die schönsten Geschichten im Schlaf"}},
+  {id:6, title:"Der ABC-Turm", mainTopic:"wortschatz",
+    intro:"Ganz oben in der Bibliothek steht ein Turm, dessen Treppenstufen nach dem ABC geordnet sind. Nur wer Wörter richtig sortiert, kommt bis nach ganz oben.",
+    reward:"Der Turm öffnet seine Tür zum höchsten Fenster – ein blitzschnelles Pferd galoppiert heraus.",
+    horse:{name:"Buchstabenblitz", color:"Türkisblau", emoji:"🐎", hue:190, ability:"sortiert und findet alles blitzschnell"}}
+];
+
+const CHAPTERS_HSU = [
+  {id:1, title:"Die Waldexpedition", mainTopic:"natur",
+    intro:"Im Abenteuerwald rauscht ein alter Baum mit vielen Stockwerken voller Tiere und Pflanzen. Nur wer die Natur genau erforscht, findet den verborgenen Pfad.",
+    reward:"Der Wald öffnet eine Lichtung – ein moosgrünes Pferd tritt zwischen den Farnen hervor.",
+    horse:{name:"Farnschritt", color:"Moosgrün", emoji:"🐴", hue:130, ability:"kennt jeden geheimen Pfad im Wald"}},
+  {id:2, title:"Die Reise durch den Körper", mainTopic:"koerper",
+    intro:"Eine winzige Zauberreise führt dich einmal durch den eigenen Körper: vom Mund bis zum Magen. Nur wer weiß, was guttut, kommt sicher wieder heraus.",
+    reward:"Ein warmes Kribbeln durchläuft dich – ein kräftiges Pferd galoppiert freudig heran.",
+    horse:{name:"Vitalglanz", color:"Kraftrosa", emoji:"🐎", hue:350, ability:"spendet mit einem Hauch neue Energie"}},
+  {id:3, title:"Die Zeitkapsel-Grotte", mainTopic:"zeitWandel",
+    intro:"In einer Grotte liegen alte Zeitkapseln aus vergangenen Tagen. Nur wer früher und heute vergleichen kann, öffnet die letzte Kapsel.",
+    reward:"Die Zeitkapsel öffnet sich mit einem leisen Klick – ein sandfarbenes Pferd tritt heraus.",
+    horse:{name:"Sandkorn", color:"Sandbraun", emoji:"🐴", hue:40, ability:"lässt die Zeit für einen Moment langsamer fließen"}},
+  {id:4, title:"Die Kompass-Expedition", mainTopic:"raum",
+    intro:"Ein alter Kompass zeigt wild in alle Richtungen. Nur wer Himmelsrichtungen und Karten lesen kann, findet den Weg zurück nach Bayern.",
+    reward:"Der Kompass beruhigt sich und zeigt endlich nach Norden – ein tiefblaues Pferd wartet schon.",
+    horse:{name:"Nordstern", color:"Kompassblau", emoji:"🐎", hue:210, ability:"findet immer und überall den Weg nach Hause"}},
+  {id:5, title:"Der Rat der Tiere", mainTopic:"gesellschaft",
+    intro:"Im Abenteuerwald treffen sich alle Tiere zu einem großen Rat, um über Regeln und Rechte zu sprechen. Nur wer gut zuhört und mitdenkt, wird als Freund aufgenommen.",
+    reward:"Alle Tiere jubeln gemeinsam – ein warmherziges Pferd stellt sich freudig zu dir.",
+    horse:{name:"Gemeinschaftsherz", color:"Herzrosa", emoji:"🐴", hue:320, ability:"bringt selbst die größten Streithähne wieder zusammen"}}
+];
+
+const SUBJECT_CHAPTERS = { mathe:CHAPTERS_MATHE, deutsch:CHAPTERS_DEUTSCH, hsu:CHAPTERS_HSU };
+function chaptersForSubject(subjectKey){ return SUBJECT_CHAPTERS[subjectKey]; }
 
 const TASKS_PER_CHAPTER = 9;
 
@@ -285,12 +401,11 @@ function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const
 function uniq(arr){ return [...new Set(arr)]; }
 
 function defaultStat(){ return {level:1, correct:0, wrong:0, correctStreak:0, wrongStreak:0}; }
-function defaultSubjectProgress(hasTopics){
-  if(!hasTopics) return {chapterProgress:{}, stats:{}, topicsEnabled:{}};
+function defaultSubjectProgress(subjectKey){
   const stats = {};
-  TOPIC_KEYS.forEach(k=> stats[k]=defaultStat());
+  topicKeysForSubject(subjectKey).forEach(k=> stats[k]=defaultStat());
   const topicsEnabled = {};
-  TOPIC_KEYS.forEach(k=> topicsEnabled[k]=true);
+  topicKeysForSubject(subjectKey).forEach(k=> topicsEnabled[k]=true);
   return {chapterProgress:{}, stats, topicsEnabled};
 }
 function defaultProfile(slotIndex){
@@ -304,9 +419,9 @@ function defaultProfile(slotIndex){
     horseEquip:{},
     timeLog:{},
     subjects:{
-      mathe: defaultSubjectProgress(true),
-      deutsch: defaultSubjectProgress(false),
-      hsu: defaultSubjectProgress(false)
+      mathe: defaultSubjectProgress("mathe"),
+      deutsch: defaultSubjectProgress("deutsch"),
+      hsu: defaultSubjectProgress("hsu")
     }
   };
 }
@@ -339,7 +454,7 @@ function migrateLegacyState(parsed){
     np.horseEquip = old.horseEquip || {};
     np.timeLog = old.timeLog || {};
     np.subjects.mathe.chapterProgress = old.chapterProgress || {};
-    TOPIC_KEYS.forEach(k=>{
+    topicKeysForSubject("mathe").forEach(k=>{
       np.subjects.mathe.stats[k] = Object.assign(defaultStat(), (old.stats||{})[k]);
     });
     np.subjects.mathe.topicsEnabled = Object.assign({}, np.subjects.mathe.topicsEnabled, old.topicsEnabled||{});
@@ -363,12 +478,13 @@ function loadState(){
       if(parsed.profiles && parsed.profiles[slot]){
         const merged = Object.assign(defaultProfile(i), parsed.profiles[slot]);
         merged.subjects = merged.subjects || {};
-        merged.subjects.mathe = Object.assign(defaultSubjectProgress(true), merged.subjects.mathe||{});
-        TOPIC_KEYS.forEach(k=>{
-          merged.subjects.mathe.stats[k] = Object.assign(defaultStat(), (merged.subjects.mathe.stats||{})[k]);
+        SUBJECT_KEYS.forEach(subjectKey=>{
+          merged.subjects[subjectKey] = Object.assign(defaultSubjectProgress(subjectKey), merged.subjects[subjectKey]||{});
+          topicKeysForSubject(subjectKey).forEach(k=>{
+            merged.subjects[subjectKey].stats[k] = Object.assign(defaultStat(), (merged.subjects[subjectKey].stats||{})[k]);
+          });
+          merged.subjects[subjectKey].topicsEnabled = Object.assign({}, defaultSubjectProgress(subjectKey).topicsEnabled, merged.subjects[subjectKey].topicsEnabled||{});
         });
-        merged.subjects.deutsch = merged.subjects.deutsch || defaultSubjectProgress(false);
-        merged.subjects.hsu = merged.subjects.hsu || defaultSubjectProgress(false);
         fresh.profiles[slot] = merged;
       }
     });
@@ -566,15 +682,14 @@ function renderSubjectMap(){
       <div class="emoji">${s.icon}</div>
       <div style="font-size:22px; font-weight:800;">${s.label}</div>
       <div class="small-muted">${s.subtitle}</div>
-      <button class="btn" data-subject="${key}">${key==="mathe"?"Los geht's!":"Ansehen"}</button>
+      <button class="btn" data-subject="${key}">Los geht's!</button>
     `;
     grid.appendChild(card);
   });
   grid.querySelectorAll("[data-subject]").forEach(btn=>{
     btn.onclick = ()=>{
       currentSubject = btn.dataset.subject;
-      if(currentSubject==="mathe") goto({name:"home"});
-      else goto({name:"comingSoon", subject:currentSubject});
+      goto({name:"home"});
     };
   });
   wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
@@ -597,25 +712,27 @@ function renderComingSoon(){
   wrap.querySelector("#backMap").onclick = ()=> goto({name:"subjectMap"});
 }
 
-function chapterUnlocked(idx, profile){
+function chapterUnlocked(chapters, idx, profile, subjectKey){
   if(idx===0) return true;
-  const prev = CHAPTERS[idx-1];
-  return !!subjectProgress(profile,"mathe").chapterProgress[prev.id];
+  const prev = chapters[idx-1];
+  return !!subjectProgress(profile,subjectKey).chapterProgress[prev.id];
 }
-function chapterTopicEnabled(chapter, profile){
+function chapterTopicEnabled(chapter, profile, subjectKey){
   if(chapter.mainTopic==="mixed") return true;
-  return subjectProgress(profile,"mathe").topicsEnabled[chapter.mainTopic];
+  return subjectProgress(profile,subjectKey).topicsEnabled[chapter.mainTopic];
 }
 
 function renderHome(){
   const profile = curProfile();
+  const chapters = chaptersForSubject(currentSubject);
+  const topics = topicsForSubject(currentSubject);
   topBar(state.currentProfile);
   const wrap = document.createElement("div");
   wrap.className = "center-wrap";
-  const doneCount = CHAPTERS.filter(c=>subjectProgress(profile,"mathe").chapterProgress[c.id]).length;
+  const doneCount = chapters.filter(c=>subjectProgress(profile,currentSubject).chapterProgress[c.id]).length;
   wrap.innerHTML = `
     <h1>Hallo, ${displayName(profile, state.currentProfile)}! 🌟</h1>
-    <p>${doneCount} von ${CHAPTERS.length} Kapiteln geschafft. Wähle dein nächstes Abenteuer:</p>
+    <p>${SUBJECTS[currentSubject].icon} ${SUBJECTS[currentSubject].label}: ${doneCount} von ${chapters.length} Kapiteln geschafft. Wähle dein nächstes Abenteuer:</p>
     <div class="chapter-grid" id="chapterGrid"></div>
     <div class="footer-nav">
       <button class="btn secondary" id="toStall">🏠 Zum Stall</button>
@@ -625,16 +742,16 @@ function renderHome(){
   `;
   app.appendChild(wrap);
   const grid = wrap.querySelector("#chapterGrid");
-  CHAPTERS.forEach((c, idx)=>{
-    const unlocked = chapterUnlocked(idx, profile);
-    const enabled = chapterTopicEnabled(c, profile);
-    const done = !!subjectProgress(profile,"mathe").chapterProgress[c.id];
+  chapters.forEach((c, idx)=>{
+    const unlocked = chapterUnlocked(chapters, idx, profile, currentSubject);
+    const enabled = chapterTopicEnabled(c, profile, currentSubject);
+    const done = !!subjectProgress(profile,currentSubject).chapterProgress[c.id];
     const card = document.createElement("div");
     card.className = "chapter-card" + (!unlocked||!enabled?" locked":"") + (done?" done":"");
-    const topicLabel = c.mainTopic==="mixed" ? "Alle Themen" : TOPIC_META[c.mainTopic].label;
+    const topicLabel = c.mainTopic==="mixed" ? "Alle Themen" : topics[c.mainTopic].label;
     card.innerHTML = `
       ${done?'<div class="chapter-badge">🐴</div>':""}
-      <div class="chapter-num">Kapitel ${c.id}</div>
+      <div class="chapter-num">Kapitel ${idx+1}</div>
       <div class="chapter-title">${c.title}</div>
       <div class="chapter-topic">${topicLabel}</div>
       ${!unlocked?'<div class="small-muted">🔒 Schließe das vorherige Kapitel ab</div>':""}
@@ -645,7 +762,7 @@ function renderHome(){
   });
   grid.querySelectorAll("[data-chapter]").forEach(btn=>{
     btn.onclick = ()=>{
-      const chapter = CHAPTERS.find(c=>c.id===Number(btn.dataset.chapter));
+      const chapter = chapters.find(c=>String(c.id)===btn.dataset.chapter);
       goto({name:"chapterIntro", chapterId:chapter.id});
     };
   });
@@ -655,13 +772,15 @@ function renderHome(){
 }
 
 function renderChapterIntro(){
-  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  const chapters = chaptersForSubject(currentSubject);
+  const chapter = chapters.find(c=>c.id===view.chapterId);
+  const idx = chapters.indexOf(chapter);
   topBar(state.currentProfile);
   const wrap = document.createElement("div");
   wrap.className = "center-wrap";
   wrap.innerHTML = `
     <div class="story-box">
-      <div class="chapter-num">Kapitel ${chapter.id}</div>
+      <div class="chapter-num">Kapitel ${idx+1}</div>
       <h1>${chapter.title}</h1>
       <div class="horse-emoji">🌙✨</div>
       <p>${chapter.intro}</p>
@@ -671,31 +790,34 @@ function renderChapterIntro(){
   `;
   app.appendChild(wrap);
   wrap.querySelector("#startTasks").onclick = ()=>{
-    const topics = buildTaskTopics(chapter, curProfile());
+    const topics = buildTaskTopics(currentSubject, chapter, curProfile());
     goto({name:"task", chapterId:chapter.id, taskIndex:0, topics, correctFirstTryStreak:0, chapterStars:0, wrongThisTask:false});
   };
   wrap.querySelector("#backHome").onclick = ()=> goto({name:"home"});
 }
 
-function buildTaskTopics(chapter, profile){
-  const topicsEnabled = subjectProgress(profile,"mathe").topicsEnabled;
+function buildTaskTopics(subjectKey, chapter, profile){
+  const topicsEnabled = subjectProgress(profile,subjectKey).topicsEnabled;
+  const topicKeys = topicKeysForSubject(subjectKey);
   function fallback(t){
     if(topicsEnabled[t]) return t;
-    const alt = TOPIC_KEYS.find(k=>topicsEnabled[k]);
+    const alt = topicKeys.find(k=>topicsEnabled[k]);
     return alt || t;
   }
-  if(chapter.mainTopic==="textaufgaben"){
-    return new Array(TASKS_PER_CHAPTER).fill("textaufgaben").map(fallback);
+  if(subjectKey==="mathe"){
+    if(chapter.mainTopic==="textaufgaben"){
+      return new Array(TASKS_PER_CHAPTER).fill("textaufgaben").map(fallback);
+    }
+    if(chapter.mainTopic==="mixed"){
+      return shuffle(topicKeys.slice(0,TASKS_PER_CHAPTER).map(fallback));
+    }
+    const arr = [];
+    for(let i=0;i<7;i++) arr.push(fallback(chapter.mainTopic));
+    arr.push(fallback("textaufgaben"));
+    arr.push(fallback("textaufgaben"));
+    return shuffle(arr);
   }
-  if(chapter.mainTopic==="mixed"){
-    const base = ["einmaleins","einmaleins","zahlenraum","zahlenraum","textaufgaben","textaufgaben","uhrzeitGroessen","uhrzeitGroessen","textaufgaben"];
-    return shuffle(base.map(fallback));
-  }
-  const arr = [];
-  for(let i=0;i<7;i++) arr.push(fallback(chapter.mainTopic));
-  arr.push(fallback("textaufgaben"));
-  arr.push(fallback("textaufgaben"));
-  return shuffle(arr);
+  return new Array(TASKS_PER_CHAPTER).fill(chapter.mainTopic).map(fallback);
 }
 
 // ---------- Task generators ----------
@@ -718,7 +840,28 @@ function genEinmaleins(level){
   const a = pick(pool);
   const b = rand(1,10);
   const product = a*b;
-  if(level>=5 && Math.random()<0.4){
+  const subtypePool = level<=2 ? ["mult"] : level===3 ? ["mult","mult","tausch"] : level===4 ? ["mult","division","tausch"] : ["mult","division","umkehr","aufgabenfamilie"];
+  const subtype = pick(subtypePool);
+
+  if(subtype==="division"){
+    return {
+      topic:"einmaleins", level,
+      prompt:`${product} : ${a} = ?`,
+      sub:"Umkehraufgabe: Teilen ist die Umkehrung des Malnehmens.",
+      options: makeOptions(b, [b+1,b-1,b+2,b-2,a].filter(n=>n>=1&&n<=10)),
+      hint:`${a} × ${b} = ${product}, also ist ${product} : ${a} = ${b}.`
+    };
+  }
+  if(subtype==="tausch"){
+    return {
+      topic:"einmaleins", level,
+      prompt:`${a} × ${b} = ${product}. Wie viel ist ${b} × ${a}?`,
+      sub:"Tauschaufgabe",
+      options: makeOptions(product, [product+a,product-a,product+b,product-b]),
+      hint:`Bei Tauschaufgaben darfst du die Reihenfolge tauschen: ${a} × ${b} = ${b} × ${a} = ${product}.`
+    };
+  }
+  if(subtype==="umkehr"){
     const missing = Math.random()<0.5 ? "a" : "b";
     const known = missing==="a" ? b : a;
     const answer = missing==="a" ? a : b;
@@ -727,7 +870,20 @@ function genEinmaleins(level){
       prompt: missing==="a" ? `? × ${known} = ${product}` : `${known} × ? = ${product}`,
       sub:"Welche Zahl fehlt?",
       options: makeOptions(answer, [answer+1,answer-1,answer+2,answer-2,answer+3].filter(n=>n>=1&&n<=10)),
-      hint:`Denk an die ${known}er-Reihe: Bei welcher Zahl kommt man auf ${product}?`
+      hint:`Nutze eine Nachbaraufgabe: Denk an die ${known}er-Reihe, bei welcher Zahl kommt man auf ${product}?`
+    };
+  }
+  if(subtype==="aufgabenfamilie"){
+    let wrongA = rand(2,10); if(wrongA===a) wrongA = wrongA<10?wrongA+1:wrongA-1;
+    const wrongB = rand(1,10);
+    const trueMembers = [`${a} × ${b}`, `${b} × ${a}`, `${product} : ${a}`];
+    const options = shuffle([...trueMembers.map(t=>({text:t,correct:false})), {text:`${wrongA} × ${wrongB}`, correct:true}]);
+    return {
+      topic:"einmaleins", level,
+      prompt:`Welche Aufgabe gehört NICHT zur Aufgabenfamilie von ${a} × ${b} = ${product}?`,
+      sub:"",
+      options,
+      hint:`Zur Aufgabenfamilie von ${a} × ${b} = ${product} gehören ${a} × ${b}, ${b} × ${a} und ${product} : ${a}.`
     };
   }
   return {
@@ -739,19 +895,75 @@ function genEinmaleins(level){
   };
 }
 
-function genZahlenraum(level){
-  const cfg = {1:{max:100},2:{max:100},3:{max:500},4:{max:1000},5:{max:1000}}[level] || {max:500};
-  const op = Math.random()<0.5 ? "+" : "-";
-  let a = rand(10, cfg.max);
-  let b = rand(10, cfg.max);
-  if(op==="-" && b>a){ const t=a; a=b; b=t; }
-  const answer = op==="+" ? a+b : a-b;
+function genZahlenraumSinn(level){
+  const maxByLevel = {1:100,2:300,3:1000,4:1000,5:1000}[level] || 500;
+  const subtypePool = level<=2 ? ["vergleichen","nachbarzehner","stellenwert"] : ["vergleichen","runden","nachbarzehner","nachbarhunderter","stellenwert"];
+  const subtype = pick(subtypePool);
+
+  if(subtype==="vergleichen"){
+    let a = rand(10, maxByLevel), b = rand(10, maxByLevel);
+    while(a===b) b = rand(10, maxByLevel);
+    const correct = a>b ? ">" : "<";
+    return {
+      topic:"zahlenraum", level,
+      prompt:`${a} ___ ${b}`,
+      sub:"Welches Zeichen passt? (kleiner <, größer >, gleich =)",
+      options: shuffle([{text:"<",correct:correct==="<"},{text:">",correct:correct===">"},{text:"=",correct:false}]),
+      hint:`Vergleiche von links: erst die Hunderter, dann Zehner, dann Einer. ${a} ist ${correct==="<"?"kleiner":"größer"} als ${b}.`
+    };
+  }
+  if(subtype==="runden"){
+    const roundTo = level>=4 && Math.random()<0.5 ? 100 : 10;
+    const n = rand(roundTo+1, maxByLevel-1);
+    const rounded = Math.round(n/roundTo)*roundTo;
+    return {
+      topic:"zahlenraum", level,
+      prompt:`Runde ${n} auf volle ${roundTo===10?"Zehner":"Hunderter"}:`,
+      sub:"",
+      options: makeOptions(rounded, [rounded+roundTo, rounded-roundTo, rounded+roundTo*2, n]),
+      hint: roundTo===10 ? `Schau auf die Einerstelle: ab 5 wird aufgerundet, sonst abgerundet.` : `Schau auf die Zehnerstelle: ab 50 wird aufgerundet, sonst abgerundet.`
+    };
+  }
+  if(subtype==="nachbarzehner"){
+    const n = rand(11, maxByLevel-11);
+    const lower = Math.floor(n/10)*10;
+    const upper = lower+10;
+    const askLower = Math.random()<0.5;
+    const correct = askLower?lower:upper;
+    return {
+      topic:"zahlenraum", level,
+      prompt:`Wie heißt der ${askLower?"vorherige":"nächste"} Zehner von ${n}?`,
+      sub:"",
+      options: makeOptions(correct, [correct+10,correct-10,correct+1,correct-1]),
+      hint:`Die Zehner um ${n} herum sind ${lower} und ${upper}.`
+    };
+  }
+  if(subtype==="nachbarhunderter"){
+    const n = rand(101, Math.max(200,maxByLevel-101));
+    const lower = Math.floor(n/100)*100;
+    const upper = lower+100;
+    const askLower = Math.random()<0.5;
+    const correct = askLower?lower:upper;
+    return {
+      topic:"zahlenraum", level,
+      prompt:`Wie heißt der ${askLower?"vorherige":"nächste"} Hunderter von ${n}?`,
+      sub:"",
+      options: makeOptions(correct, [correct+100,correct-100,correct+10,correct-10]),
+      hint:`Die Hunderter um ${n} herum sind ${lower} und ${upper}.`
+    };
+  }
+  // stellenwert
+  const h = level<=2 ? rand(0,3) : rand(1,9), z=rand(0,9), e=rand(0,9);
+  const n = h*100+z*10+e;
+  const askWhich = level<=2 ? pick(["Z","E"]) : pick(["H","Z","E"]);
+  const correct = askWhich==="H"?h*100: askWhich==="Z"?z*10:e;
+  const placeName = askWhich==="H"?"Hunderterstelle":askWhich==="Z"?"Zehnerstelle":"Einerstelle";
   return {
     topic:"zahlenraum", level,
-    prompt:`${a} ${op} ${b} = ?`,
+    prompt:`${n}: Wie viel ist die ${placeName} wert?`,
     sub:"",
-    options: makeOptions(answer, [answer+1,answer-1,answer+10,answer-10,answer+2,answer-2,answer+100,answer-100]),
-    hint: op==="+" ? `Rechne erst die Zehner, dann die Einer: ${a} + ${b}.` : `Rechne in Schritten zurück: von ${a} erst die Zehner, dann die Einer von ${b} abziehen.`
+    options: makeOptions(correct, uniq([correct+10,correct-10,correct+1,correct-1,h,z,e]).filter(x=>x!==correct)),
+    hint:`${n} = ${h} H + ${z} Z + ${e} E. Die ${placeName} ist ${correct} wert.`
   };
 }
 
@@ -763,53 +975,68 @@ const THEME_WORDS = {
   time:{obj:"Minuten", subj:"Sanduhren", verbGive:"laufen in"}
 };
 
-function genTextaufgaben(level, theme){
+function genSachaufgabeFRA(level, theme){
   const words = THEME_WORDS[theme] || THEME_WORDS.apples;
-  const templates = [];
-  if(level<=2){
-    templates.push(()=>{
-      const a = rand(3,15), b = rand(3,15);
-      return {q:`${a} ${words.obj} liegen im Korb. ${b} weitere ${words.obj} kommen dazu. Wie viele ${words.obj} sind es jetzt?`, ans:a+b, hint:`Zähle einfach weiter: ${a} und dann noch ${b} dazu.`};
-    });
-    templates.push(()=>{
-      const a = rand(10,20), b = rand(2,a-1);
-      return {q:`Du hast ${a} ${words.obj}. Du gibst ${b} an ein Pferd. Wie viele ${words.obj} bleiben übrig?`, ans:a-b, hint:`Zähle von ${a} rückwärts um ${b}.`};
-    });
+  let scenario, correctQ, wrongQs, correctR, wrongRs, answer, hintQ, hintR, hintA;
+  if(level<=2 && Math.random()<0.5){
+    const a = rand(3,15), b = rand(3,15);
+    scenario = `${a} ${words.obj} liegen im Korb. ${b} weitere ${words.obj} kommen dazu.`;
+    correctQ = `Wie viele ${words.obj} sind es jetzt insgesamt?`;
+    wrongQs = [`Wie viele ${words.obj} waren es gestern?`, `Wie viele ${words.subj} gibt es hier?`];
+    correctR = `${a} + ${b}`; wrongRs = [`${a} - ${b}`, `${a} × ${b}`];
+    answer = a+b;
+    hintQ = `Lies genau: Es kommen ${words.obj} dazu – gefragt ist die neue Gesamtzahl.`;
+    hintR = `Wenn etwas dazukommt, rechnest du PLUS.`;
+    hintA = `Rechne ${a} + ${b}.`;
+  } else if(level<=2){
+    const a = rand(10,20), b = rand(2,a-1);
+    scenario = `Du hast ${a} ${words.obj}. Du gibst ${b} davon weg.`;
+    correctQ = `Wie viele ${words.obj} bleiben dir übrig?`;
+    wrongQs = [`Wie viele ${words.obj} hattest du am Anfang?`, `Wie viele ${words.subj} gibt es hier?`];
+    correctR = `${a} - ${b}`; wrongRs = [`${a} + ${b}`, `${b} - ${a}`];
+    answer = a-b;
+    hintQ = `Du gibst ${words.obj} weg – gefragt ist, was übrig bleibt.`;
+    hintR = `Wenn etwas weggegeben wird, rechnest du MINUS.`;
+    hintA = `Rechne ${a} - ${b}.`;
   } else if(level===3){
-    templates.push(()=>{
-      const a = rand(20,60), b = rand(15,40);
-      return {q:`Auf der ersten Weide stehen ${a} ${words.obj}, auf der zweiten ${b}. Wie viele ${words.obj} sind es zusammen?`, ans:a+b, hint:`Addiere zuerst die Zehner, dann die Einer.`};
-    });
-    templates.push(()=>{
-      const perHorse = rand(2,5), horses = rand(3,6);
-      return {q:`Jedes der ${horses} Pferde ${words.verbGive} ${perHorse} ${words.obj}. Wie viele ${words.obj} braucht man insgesamt?`, ans:perHorse*horses, hint:`Das ist ${horses} mal ${perHorse}.`};
-    });
+    const a = rand(20,60), b = rand(15,40);
+    scenario = `Auf der ersten Weide stehen ${a} ${words.obj}, auf der zweiten ${b}.`;
+    correctQ = `Wie viele ${words.obj} sind es auf beiden Weiden zusammen?`;
+    wrongQs = [`Wie viele ${words.obj} mehr hat die erste Weide?`, `Wie viele ${words.subj} gibt es dort?`];
+    correctR = `${a} + ${b}`; wrongRs = [`${a} - ${b}`, `${a} × ${b}`];
+    answer = a+b;
+    hintQ = `Gesucht ist die Gesamtzahl von beiden Weiden zusammen.`;
+    hintR = `"Zusammen" bedeutet meistens PLUS.`;
+    hintA = `Addiere zuerst die Zehner, dann die Einer.`;
   } else if(level===4){
-    templates.push(()=>{
-      const perHorse = rand(3,9), horses = rand(4,9);
-      return {q:`Ein Pferd braucht ${perHorse} ${words.obj} pro Tag. Wie viele ${words.obj} brauchen ${horses} Pferde an einem Tag?`, ans:perHorse*horses, hint:`Rechne ${horses} × ${perHorse} mit der Einmaleins-Reihe von ${perHorse}.`};
-    });
-    templates.push(()=>{
-      const a = rand(100,400), b = rand(50,300);
-      return {q:`In der Schatzkammer liegen ${a} ${words.obj}. Es kommen ${b} dazu. Wie viele sind es jetzt?`, ans:a+b, hint:`Addiere erst die Hunderter, dann Zehner und Einer.`};
-    });
+    const perHorse = rand(3,9), horses = rand(4,9);
+    scenario = `Jedes von ${horses} Pferden bekommt ${perHorse} ${words.obj}.`;
+    correctQ = `Wie viele ${words.obj} braucht man insgesamt für alle Pferde?`;
+    wrongQs = [`Wie viele ${words.obj} bekommt ein einzelnes Pferd?`, `Wie viele Pferde gibt es auf der Nachbarweide?`];
+    correctR = `${horses} × ${perHorse}`; wrongRs = [`${horses} + ${perHorse}`, `${horses} - ${perHorse}`];
+    answer = horses*perHorse;
+    hintQ = `Gefragt ist die Gesamtmenge für ALLE Pferde zusammen.`;
+    hintR = `Jedes Pferd bekommt gleich viele ${words.obj} – das ist eine Malaufgabe.`;
+    hintA = `Nutze die ${perHorse}er-Reihe: ${horses} × ${perHorse}.`;
   } else {
-    templates.push(()=>{
-      const a = rand(200,700), b = rand(80,300), c = rand(20,150);
-      return {q:`Du hast ${a} ${words.obj}. Du bekommst ${b} dazu, gibst aber ${c} wieder ab. Wie viele ${words.obj} hast du am Ende?`, ans:a+b-c, hint:`Rechne Schritt für Schritt: erst ${a} + ${b}, dann davon ${c} abziehen.`};
-    });
-    templates.push(()=>{
-      const perHorse = rand(6,9), horses = rand(6,9);
-      return {q:`${horses} Pferde bekommen je ${perHorse} ${words.obj}. Wie viele ${words.obj} sind das insgesamt?`, ans:perHorse*horses, hint:`Nutze die ${perHorse}er-Reihe: ${horses} mal ${perHorse}.`};
-    });
+    const a = rand(200,600), b = rand(80,250), c = rand(20,150);
+    scenario = `Du hast ${a} ${words.obj}. Du bekommst ${b} dazu, gibst aber ${c} wieder ab.`;
+    correctQ = `Wie viele ${words.obj} hast du am Ende?`;
+    wrongQs = [`Wie viele ${words.obj} hattest du ganz am Anfang?`, `Wie viele ${words.obj} hat dein Freund?`];
+    correctR = `${a} + ${b} - ${c}`; wrongRs = [`${a} - ${b} + ${c}`, `${a} + ${b} + ${c}`];
+    answer = a+b-c;
+    hintQ = `Gefragt ist der Bestand ganz am ENDE, nach beiden Änderungen.`;
+    hintR = `Was dazukommt, wird addiert, was weggeht, wird abgezogen.`;
+    hintA = `Rechne Schritt für Schritt: erst ${a} + ${b}, dann davon ${c} abziehen.`;
   }
-  const t = pick(templates)();
+  const questionOptions = shuffle([{text:correctQ,correct:true}, ...wrongQs.map(q=>({text:q,correct:false}))]);
+  const rechnungOptions = shuffle([{text:correctR,correct:true}, ...wrongRs.map(r=>({text:r,correct:false}))]);
+  const answerOptions = makeOptions(answer, [answer+1,answer-1,answer+2,answer-2,answer+10,answer-10]);
   return {
+    type:"sachaufgabeFRA",
     topic:"textaufgaben", level,
-    prompt:t.q,
-    sub:"",
-    options: makeOptions(t.ans, [t.ans+1,t.ans-1,t.ans+2,t.ans-2,t.ans+10,t.ans-10,t.ans*1+5]),
-    hint:t.hint
+    scenario, questionOptions, rechnungOptions, answerOptions,
+    hintQuestion:hintQ, hintRechnung:hintR, hintAnswer:hintA
   };
 }
 
@@ -852,8 +1079,18 @@ function genUhrzeitGroessen(level){
       hint:`Der kurze Zeiger zeigt auf die Stunde (${((h-1)%12)+1}), der lange Zeiger auf die Minuten.`
     };
   }
-  const isMoney = level===4 || Math.random()<0.5;
+  const isMoney = level===4 || Math.random()<0.4;
   if(isMoney){
+    if(Math.random()<0.4){
+      const price = rand(3,18), paid = price + pick([2,5,10,20]);
+      const change = paid - price;
+      return {
+        topic:"uhrzeitGroessen", level,
+        prompt:`Ein Hufeisen kostet ${price} Euro. Du bezahlst mit ${paid} Euro. Wie viel Rückgeld bekommst du?`,
+        sub:"", options: makeOptions(change, [change+1,change-1,change+2,change-2,price]),
+        hint:`Rückgeld = bezahltes Geld minus Preis: ${paid} - ${price}.`
+      };
+    }
     const price = rand(2,9), count = rand(2,5);
     const total = price*count;
     return {
@@ -884,19 +1121,822 @@ function genUhrzeitGroessen(level){
   };
 }
 
-function generateTask(topic, level, theme){
+function genHalbschriftlich(level){
+  const op = Math.random()<0.5 ? "+" : "-";
+  const strategies = level<=1
+    ? ["schrittweise"]
+    : op==="+" ? ["schrittweise","stellenweise","hilfsaufgabe"] : ["schrittweise","stellenweise","ergaenzen"];
+  const strategy = pick(strategies);
+  let a, b, answer;
+  const steps = [];
+
+  if(strategy==="hilfsaufgabe"){
+    const roundBase = rand(2,8)*100;
+    const delta = pick([-2,-1,1,2]);
+    a = roundBase + delta;
+    b = rand(11,89);
+    answer = a+b;
+    const roundedSum = roundBase + b;
+    steps.push(`Hilfsaufgabe: ${roundBase} + ${b} = ${roundedSum}`);
+    steps.push(delta>=0 ? `${roundedSum} + ${delta} = ${answer}` : `${roundedSum} - ${Math.abs(delta)} = ${answer}`);
+  } else {
+    a = rand(30, level<=2?300:1000);
+    b = rand(11, level<=2?99:999);
+    if(op==="-" && b>a){ const t=a; a=b; b=t; }
+    answer = op==="+" ? a+b : a-b;
+    if(strategy==="schrittweise"){
+      const bH = Math.floor(b/100)*100, bZ = Math.floor((b%100)/10)*10, bE = b%10;
+      let running = a;
+      if(bH){ running = op==="+"?running+bH:running-bH; steps.push(`${a} ${op} ${bH} = ${running}`); }
+      if(bZ){ const prev=running; running = op==="+"?running+bZ:running-bZ; steps.push(`${prev} ${op} ${bZ} = ${running}`); }
+      if(bE){ const prev=running; running = op==="+"?running+bE:running-bE; steps.push(`${prev} ${op} ${bE} = ${running}`); }
+      if(steps.length===0) steps.push(`${a} ${op} ${b} = ${answer}`);
+    } else if(strategy==="stellenweise"){
+      const aH=Math.floor(a/100), aZ=Math.floor((a%100)/10), aE=a%10;
+      const bH=Math.floor(b/100), bZ=Math.floor((b%100)/10), bE=b%10;
+      if(op==="+"){
+        steps.push(`H: ${aH*100} + ${bH*100} = ${(aH+bH)*100}`);
+        steps.push(`Z: ${aZ*10} + ${bZ*10} = ${(aZ+bZ)*10}`);
+        steps.push(`E: ${aE} + ${bE} = ${aE+bE}`);
+        steps.push(`Zusammen: ${answer}`);
+      } else {
+        steps.push(`Ziehe erst die Hunderter, dann die Zehner, dann die Einer von ${a} ab.`);
+        steps.push(`${a} - ${b} = ${answer}`);
+      }
+    } else {
+      const toNextTen = (Math.ceil(b/10)*10) - b;
+      const afterTen = b + toNextTen;
+      const rest = a - afterTen;
+      steps.push(`Ergänze von ${b} zum nächsten Zehner: ${b} + ${toNextTen} = ${afterTen}`);
+      steps.push(`Dann von ${afterTen} weiter bis ${a}: ${afterTen} + ${rest} = ${a}`);
+      steps.push(`Zusammen ergänzt: ${toNextTen} + ${rest} = ${answer}`);
+    }
+  }
+
+  const strategyLabel = {schrittweise:"Schrittweise rechnen", stellenweise:"Stellenweise rechnen (H+H, Z+Z, E+E)", hilfsaufgabe:"Hilfsaufgabe", ergaenzen:"Ergänzen vom Kleineren zum Größeren"}[strategy];
+  return {
+    topic:"halbschriftlich", level,
+    prompt:`${a} ${op} ${b} = ?`,
+    sub:`Strategie: ${strategyLabel}`,
+    options: makeOptions(answer, [answer+1,answer-1,answer+10,answer-10,answer+2,answer-2,answer+100,answer-100]),
+    steps,
+    hint: op==="+" ? `Zerlege die Zahlen in Hunderter, Zehner und Einer und addiere sie einzeln.` : `Rechne in Schritten zurück oder ergänze vom kleineren bis zum größeren Wert.`
+  };
+}
+
+function genSchriftlich(level){
+  const digits = level<=2 ? 2 : 3;
+  const minVal = digits===2 ? 10 : 100;
+  const maxVal = digits===2 ? 89 : 899;
+  const a = rand(minVal, maxVal);
+  const b = rand(minVal, maxVal);
+  const sum = a+b;
+  const n = String(sum).length;
+  function toRTL(num){ return String(num).padStart(n,"0").split("").reverse().map(Number); }
+  return {
+    type:"writtenAddition",
+    topic:"schriftlich", level,
+    a, b, sum, n,
+    aRTL: toRTL(a), bRTL: toRTL(b), sumRTL: toRTL(sum),
+    hint:`Addiere von rechts nach links: erst die Einer, dann die Zehner${n>=3?", dann die Hunderter":""}. Sind es in einer Spalte 10 oder mehr, denk an den kleinen Übertrag für die nächste Spalte.`
+  };
+}
+
+function genMalDiv(level){
+  const subtypePool = level<=2 ? ["zehnerzahl"] : level===3 ? ["zehnerzahl","zerlegen"] : ["zerlegen","divisionRest"];
+  const subtype = pick(subtypePool);
+  if(subtype==="zehnerzahl"){
+    const a = rand(2,9);
+    const bTen = rand(2,9)*10;
+    const product = a*bTen;
+    return {
+      topic:"malDiv", level,
+      prompt:`${a} × ${bTen} = ?`,
+      sub:"Tipp: Rechne erst ohne die Null, dann hänge sie wieder an.",
+      options: makeOptions(product, [product+a*10,product-a*10,product+10,product-10,a*(bTen/10)]),
+      hint:`Rechne ${a} × ${bTen/10} = ${a*(bTen/10)} und hänge dann eine Null an: ${product}.`
+    };
+  }
+  if(subtype==="zerlegen"){
+    const a = rand(2,9);
+    const bTens = rand(1,8)*10, bOnes = rand(1,9);
+    const b = bTens+bOnes;
+    const product = a*b;
+    return {
+      topic:"malDiv", level,
+      prompt:`${a} × ${b} = ?`,
+      sub:"",
+      options: makeOptions(product, [product+a,product-a,product+10,product-10,a*bTens]),
+      steps:[`Zerlege ${b} in ${bTens} + ${bOnes}`, `${a} × ${bTens} = ${a*bTens}`, `${a} × ${bOnes} = ${a*bOnes}`, `Zusammen: ${a*bTens} + ${a*bOnes} = ${product}`],
+      hint:`Zerlege: ${a} × ${b} = ${a} × ${bTens} + ${a} × ${bOnes} = ${a*bTens} + ${a*bOnes}.`
+    };
+  }
+  const divisor = rand(2,9);
+  const quotient = rand(3,12);
+  const rest = rand(1,divisor-1);
+  const dividend = divisor*quotient + rest;
+  return {
+    topic:"malDiv", level,
+    prompt:`${dividend} : ${divisor} = ? Rest ?`,
+    sub:"Wähle das Ergebnis mit dem richtigen Rest.",
+    options: shuffle([
+      {text:`${quotient} Rest ${rest}`, correct:true},
+      {text:`${quotient} Rest ${rest===divisor-1?Math.max(1,rest-1):rest+1}`, correct:false},
+      {text:`${quotient+1} Rest ${rest}`, correct:false},
+      {text:`${quotient-1>0?quotient-1:quotient+2} Rest ${rest}`, correct:false}
+    ]),
+    hint:`${divisor} × ${quotient} = ${divisor*quotient}. ${dividend} - ${divisor*quotient} = ${rest}, also bleibt Rest ${rest}.`
+  };
+}
+
+const KOERPER = [
+  {name:"Würfel", emoji:"🧊"},
+  {name:"Quader", emoji:"📦"},
+  {name:"Kugel", emoji:"⚽"},
+  {name:"Zylinder", emoji:"🥫"}
+];
+function genGeometrie(level){
+  const subtypePool = level<=2 ? ["koerper","symmetrie"] : level===3 ? ["koerper","symmetrie","umfang"] : ["koerper","symmetrie","umfang","umfang"];
+  const subtype = pick(subtypePool);
+  if(subtype==="koerper"){
+    const k = pick(KOERPER);
+    const others = shuffle(KOERPER.filter(x=>x.name!==k.name)).slice(0,3);
+    return {
+      topic:"geometrie", level,
+      prompt:`Welcher Körper ist das? ${k.emoji}`,
+      sub:"",
+      options: shuffle([{text:k.name,correct:true}, ...others.map(o=>({text:o.name,correct:false}))]),
+      hint:`Ein ${k.name} erkennst du an seiner typischen Form – schau dir Ecken, Kanten und Flächen an.`
+    };
+  }
+  if(subtype==="symmetrie"){
+    const symmetricEmojis = ["⬛","🔷","⭐","❤️","⚪"];
+    const asymmetricEmojis = ["🥾","✂️","🔣","🌀"];
+    const isSym = Math.random()<0.5;
+    const shape = isSym ? pick(symmetricEmojis) : pick(asymmetricEmojis);
+    return {
+      topic:"geometrie", level,
+      prompt:`Ist diese Figur achsensymmetrisch? ${shape}`,
+      sub:"Achsensymmetrisch heißt: Du kannst eine Linie einzeichnen, an der beide Seiten spiegelgleich sind.",
+      options: shuffle([{text:"Ja",correct:isSym},{text:"Nein",correct:!isSym}]),
+      hint:`Stell dir eine Faltlinie in der Mitte vor: Passen beide Hälften genau aufeinander?`
+    };
+  }
+  const l = rand(3, level>=4?20:12), w = rand(2, level>=4?15:10);
+  const umfang = 2*(l+w);
+  return {
+    topic:"geometrie", level,
+    prompt:`Ein Rechteck ist ${l} cm lang und ${w} cm breit. Wie groß ist der Umfang?`,
+    sub:"",
+    options: makeOptions(umfang, [umfang+2,umfang-2,l*w,umfang+w,umfang-w]),
+    hint:`Umfang = alle vier Seiten addieren: ${l} + ${w} + ${l} + ${w} = 2 × (${l} + ${w}).`
+  };
+}
+
+function genDaten(level){
+  const allNames = ["Funkelstern","Rubin","Mondschatten","Sonnenglanz","Feuermähne"];
+  const categories = shuffle(allNames).slice(0, level<=2?3:4);
+  const maxVal = level<=2?10:level===3?20:30;
+  const values = categories.map(()=>rand(2,maxVal));
+  const barChart = `<div style="display:flex; gap:14px; align-items:flex-end; height:130px; justify-content:center;">
+    ${categories.map((c,i)=>`
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:13px; font-weight:700;">${values[i]}</div>
+        <div style="width:34px; height:${Math.max(10,Math.round(values[i]/maxVal*90))}px; background:var(--gold); border-radius:6px 6px 0 0;"></div>
+        <div style="font-size:11px; max-width:60px; text-align:center;">${c}</div>
+      </div>`).join("")}
+  </div>`;
+  const subtype = pick(["lesen","maximum","summe"]);
+  if(subtype==="lesen"){
+    const idx = rand(0,categories.length-1);
+    return {
+      topic:"daten", level,
+      prompt:`Wie viele Äpfel hat ${categories[idx]} bekommen?`,
+      sub:"", visual:barChart,
+      options: makeOptions(values[idx], uniq(values.filter((v,i)=>i!==idx).concat([values[idx]+2,values[idx]-2]))),
+      hint:`Schau auf den Balken von ${categories[idx]} und lies die Zahl darüber ab.`
+    };
+  }
+  if(subtype==="maximum"){
+    const maxV = Math.max(...values);
+    const winner = categories[values.indexOf(maxV)];
+    const distractors = categories.filter(c=>c!==winner);
+    return {
+      topic:"daten", level,
+      prompt:`Welches Pferd hat die meisten Äpfel bekommen?`,
+      sub:"", visual:barChart,
+      options: shuffle([{text:winner,correct:true}, ...distractors.map(d=>({text:d,correct:false}))]),
+      hint:`Suche den höchsten Balken im Diagramm – das ist ${winner}.`
+    };
+  }
+  const sum = values.reduce((a,b)=>a+b,0);
+  return {
+    topic:"daten", level,
+    prompt:`Wie viele Äpfel wurden insgesamt verteilt?`,
+    sub:"", visual:barChart,
+    options: makeOptions(sum, [sum+2,sum-2,sum+5,sum-5,Math.max(...values)]),
+    hint:`Addiere alle Balkenwerte zusammen: ${values.join(" + ")} = ${sum}.`
+  };
+}
+
+// ---------- Deutsch generators ----------
+
+const VERLAENGERN_WORDS = [
+  {word:"Berg", plural:"Berge", wrong:"ck"},
+  {word:"Weg", plural:"Wege", wrong:"ck"},
+  {word:"Tag", plural:"Tage", wrong:"ck"},
+  {word:"Zug", plural:"Züge", wrong:"ck"},
+  {word:"Hund", plural:"Hunde", wrong:"t"},
+  {word:"Kind", plural:"Kinder", wrong:"t"},
+  {word:"Feld", plural:"Felder", wrong:"t"},
+  {word:"Wind", plural:"Winde", wrong:"t"},
+  {word:"Freund", plural:"Freunde", wrong:"t"},
+  {word:"Bild", plural:"Bilder", wrong:"t"},
+  {word:"Grund", plural:"Gründe", wrong:"t"},
+  {word:"Wald", plural:"Wälder", wrong:"t"}
+];
+function genRechtschreibungVerlaengern(){
+  const w = pick(VERLAENGERN_WORDS);
+  const correct = w.word.slice(-1);
+  const base = w.word.slice(0,-1);
+  const pool = ["b","p","d","t","g","k","ck"].filter(x=>x!==correct && x!==w.wrong);
+  const options = shuffle([
+    {text:correct, correct:true},
+    {text:w.wrong, correct:false},
+    {text:pick(pool), correct:false}
+  ]);
+  return {
+    prompt:`${base}_ (Mehrzahl: ${w.plural})`,
+    sub:"Strategie: Verlängern",
+    options,
+    hint:`Verlängere das Wort: ${w.word} → ${w.plural}. Jetzt hörst du deutlich, dass es "${correct}" heißt.`
+  };
+}
+
+const ABLEITEN_WORDS = [
+  {word:"Bäume", base:"Baum", missing:"äu"},
+  {word:"Häuser", base:"Haus", missing:"äu"},
+  {word:"Mäuse", base:"Maus", missing:"äu"},
+  {word:"Räume", base:"Raum", missing:"äu"},
+  {word:"Zäune", base:"Zaun", missing:"äu"},
+  {word:"Läufer", base:"Lauf", missing:"äu"},
+  {word:"Kräuter", base:"Kraut", missing:"äu"},
+  {word:"Häute", base:"Haut", missing:"äu"},
+  {word:"Wälder", base:"Wald", missing:"ä"},
+  {word:"Gläser", base:"Glas", missing:"ä"},
+  {word:"Bänder", base:"Band", missing:"ä"},
+  {word:"Kästen", base:"Kasten", missing:"ä"}
+];
+function genRechtschreibungAbleiten(){
+  const w = pick(ABLEITEN_WORDS);
+  const idx = w.word.indexOf(w.missing);
+  const masked = w.word.slice(0,idx) + "_".repeat(w.missing.length) + w.word.slice(idx+w.missing.length);
+  const wrongOptions = w.missing==="äu" ? ["eu","au"] : ["e","a"];
+  const options = shuffle([{text:w.missing,correct:true}, ...wrongOptions.map(o=>({text:o,correct:false}))]);
+  return {
+    prompt:`${masked} (verwandtes Wort: ${w.base})`,
+    sub:"Strategie: Ableiten",
+    options,
+    hint:`Leite ab: "${w.word}" kommt von "${w.base}". Darum schreibst du "${w.missing}".`
+  };
+}
+
+const DOPPEL_WORDS = [
+  {word:"kommen", syllables:"kom-men", double:"mm"},
+  {word:"rennen", syllables:"ren-nen", double:"nn"},
+  {word:"Sonne", syllables:"Son-ne", double:"nn"},
+  {word:"Wasser", syllables:"Was-ser", double:"ss"},
+  {word:"Himmel", syllables:"Him-mel", double:"mm"},
+  {word:"Zimmer", syllables:"Zim-mer", double:"mm"},
+  {word:"Teppich", syllables:"Tep-pich", double:"pp"},
+  {word:"Mutter", syllables:"Mut-ter", double:"tt"},
+  {word:"Hammer", syllables:"Ham-mer", double:"mm"},
+  {word:"Suppe", syllables:"Sup-pe", double:"pp"},
+  {word:"Puppe", syllables:"Pup-pe", double:"pp"},
+  {word:"Butter", syllables:"But-ter", double:"tt"}
+];
+function genRechtschreibungDoppel(){
+  const w = pick(DOPPEL_WORDS);
+  const idx = w.word.indexOf(w.double);
+  const masked = w.word.slice(0,idx) + "_" + w.word.slice(idx+w.double.length);
+  const options = shuffle([{text:w.double,correct:true},{text:w.double[0],correct:false}]);
+  return {
+    prompt:`${masked} (Silben: ${w.syllables})`,
+    sub:"Strategie: Silben schwingen",
+    options,
+    hint:`Sprich die Silben: ${w.syllables}. Nach einem kurzen Selbstlaut verdoppelst du den Mitlaut: "${w.double}".`
+  };
+}
+
+const MERK_WORDS = [
+  {word:"Wiese", blank:"W_ese", correct:"ie", wrong:"i", cat:"ie-Wort"},
+  {word:"Liebe", blank:"L_be", correct:"ie", wrong:"i", cat:"ie-Wort"},
+  {word:"Tiere", blank:"T_re", correct:"ie", wrong:"i", cat:"ie-Wort"},
+  {word:"Biene", blank:"B_ne", correct:"ie", wrong:"i", cat:"ie-Wort"},
+  {word:"Spiegel", blank:"Sp_gel", correct:"ie", wrong:"i", cat:"ie-Wort"},
+  {word:"Fliege", blank:"Fl_ge", correct:"ie", wrong:"i", cat:"ie-Wort"},
+  {word:"Vater", blank:"_ater", correct:"V", wrong:"F", cat:"V-Wort"},
+  {word:"Vogel", blank:"_ogel", correct:"V", wrong:"F", cat:"V-Wort"},
+  {word:"Vase", blank:"_ase", correct:"V", wrong:"F", cat:"V-Wort"},
+  {word:"Kuh", blank:"Ku_", correct:"h", wrong:"ch", cat:"Dehnungs-h"},
+  {word:"Schuh", blank:"Schu_", correct:"h", wrong:"ch", cat:"Dehnungs-h"},
+  {word:"Mühle", blank:"M_le", correct:"üh", wrong:"ü", cat:"Dehnungs-h"},
+  {word:"Ruhe", blank:"R_e", correct:"uh", wrong:"u", cat:"Dehnungs-h"}
+];
+function genRechtschreibungMerk(){
+  const w = pick(MERK_WORDS);
+  const options = shuffle([{text:w.correct,correct:true},{text:w.wrong,correct:false}]);
+  return {
+    prompt:w.blank,
+    sub:`Merkwort (${w.cat})`,
+    options,
+    hint:`"${w.word}" ist ein Merkwort – das merkst du dir einfach, denn es folgt keiner festen Regel.`
+  };
+}
+
+function genDeutschRechtschreibung(level){
+  const pools = level<=2 ? ["verlaengern","doppel"] : level===3 ? ["verlaengern","doppel","ableiten"] : ["verlaengern","doppel","ableiten","merk"];
+  const strategy = pick(pools);
+  if(strategy==="verlaengern") return genRechtschreibungVerlaengern();
+  if(strategy==="doppel") return genRechtschreibungDoppel();
+  if(strategy==="ableiten") return genRechtschreibungAbleiten();
+  return genRechtschreibungMerk();
+}
+
+const NOMEN_WORDS = [
+  {word:"Hund", artikel:"der", plural:"Hunde"},
+  {word:"Katze", artikel:"die", plural:"Katzen"},
+  {word:"Pferd", artikel:"das", plural:"Pferde"},
+  {word:"Baum", artikel:"der", plural:"Bäume"},
+  {word:"Blume", artikel:"die", plural:"Blumen"},
+  {word:"Haus", artikel:"das", plural:"Häuser"},
+  {word:"Apfel", artikel:"der", plural:"Äpfel"},
+  {word:"Schule", artikel:"die", plural:"Schulen"},
+  {word:"Buch", artikel:"das", plural:"Bücher"},
+  {word:"Freund", artikel:"der", plural:"Freunde"},
+  {word:"Sonne", artikel:"die", plural:"Sonnen"},
+  {word:"Fenster", artikel:"das", plural:"Fenster"}
+];
+const VERB_WORDS = [
+  {grundform:"spielen", gebeugt:"spielt"},
+  {grundform:"laufen", gebeugt:"läuft"},
+  {grundform:"essen", gebeugt:"isst"},
+  {grundform:"lesen", gebeugt:"liest"},
+  {grundform:"schlafen", gebeugt:"schläft"},
+  {grundform:"singen", gebeugt:"singt"},
+  {grundform:"springen", gebeugt:"springt"},
+  {grundform:"lachen", gebeugt:"lacht"},
+  {grundform:"malen", gebeugt:"malt"},
+  {grundform:"fahren", gebeugt:"fährt"},
+  {grundform:"tragen", gebeugt:"trägt"},
+  {grundform:"geben", gebeugt:"gibt"}
+];
+const ADJ_WORDS = [
+  {grund:"schön", komparativ:"schöner", superlativ:"am schönsten"},
+  {grund:"groß", komparativ:"größer", superlativ:"am größten"},
+  {grund:"klein", komparativ:"kleiner", superlativ:"am kleinsten"},
+  {grund:"schnell", komparativ:"schneller", superlativ:"am schnellsten"},
+  {grund:"stark", komparativ:"stärker", superlativ:"am stärksten"},
+  {grund:"warm", komparativ:"wärmer", superlativ:"am wärmsten"},
+  {grund:"leise", komparativ:"leiser", superlativ:"am leisesten"},
+  {grund:"laut", komparativ:"lauter", superlativ:"am lautesten"},
+  {grund:"gut", komparativ:"besser", superlativ:"am besten"},
+  {grund:"weit", komparativ:"weiter", superlativ:"am weitesten"},
+  {grund:"kalt", komparativ:"kälter", superlativ:"am kältesten"},
+  {grund:"hoch", komparativ:"höher", superlativ:"am höchsten"}
+];
+const PRONOMEN_SAETZE = [
+  {text:"Ich gehe zur Schule.", pronoun:"Ich"},
+  {text:"Du spielst mit dem Ball.", pronoun:"Du"},
+  {text:"Er füttert die Pferde.", pronoun:"Er"},
+  {text:"Sie liest ein Buch.", pronoun:"Sie"},
+  {text:"Wir backen einen Kuchen.", pronoun:"Wir"},
+  {text:"Ihr singt ein Lied.", pronoun:"Ihr"}
+];
+const PRONOMEN_POOL = ["Ich","Du","Er","Sie","Wir","Ihr"];
+
+function genDeutschWortarten(){
+  const subtype = pick(["artikel","mehrzahl","grundform","gebeugt","steigerung","pronomen"]);
+  if(subtype==="artikel"){
+    const w = pick(NOMEN_WORDS);
+    const others = ["der","die","das"].filter(a=>a!==w.artikel);
+    return {
+      prompt:`Welcher Artikel passt zu "${w.word}"?`,
+      sub:"Nomen: Artikel",
+      options: shuffle([{text:w.artikel,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`"${w.word}" ist ein Nomen. Richtig heißt es "${w.artikel} ${w.word}".`
+    };
+  }
+  if(subtype==="mehrzahl"){
+    const w = pick(NOMEN_WORDS);
+    const others = shuffle(NOMEN_WORDS.filter(x=>x!==w)).slice(0,2).map(x=>x.plural);
+    return {
+      prompt:`Wie heißt die Mehrzahl von "${w.word}"?`,
+      sub:"Nomen: Einzahl/Mehrzahl",
+      options: shuffle([{text:w.plural,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`Die Mehrzahl von "${w.word}" ist "${w.plural}".`
+    };
+  }
+  if(subtype==="grundform"){
+    const v = pick(VERB_WORDS);
+    const others = shuffle(VERB_WORDS.filter(x=>x!==v)).slice(0,2).map(x=>x.grundform);
+    return {
+      prompt:`Wie lautet die Grundform von "${v.gebeugt}"?`,
+      sub:"Verb: Grundform",
+      options: shuffle([{text:v.grundform,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`Die Grundform (Infinitiv) von "${v.gebeugt}" ist "${v.grundform}".`
+    };
+  }
+  if(subtype==="gebeugt"){
+    const v = pick(VERB_WORDS);
+    const others = shuffle(VERB_WORDS.filter(x=>x!==v)).slice(0,2).map(x=>x.gebeugt);
+    return {
+      prompt:`Wie lautet die gebeugte Form von "${v.grundform}" für "er/sie/es"?`,
+      sub:"Verb: gebeugte Form",
+      options: shuffle([{text:v.gebeugt,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`"er/sie/es" + "${v.grundform}" wird zu "${v.gebeugt}".`
+    };
+  }
+  if(subtype==="steigerung"){
+    const a = pick(ADJ_WORDS);
+    const askSuperlativ = Math.random()<0.5;
+    const correct = askSuperlativ ? a.superlativ : a.komparativ;
+    const others = shuffle(ADJ_WORDS.filter(x=>x!==a)).slice(0,2).map(x=>askSuperlativ?x.superlativ:x.komparativ);
+    return {
+      prompt:`Wie lautet die ${askSuperlativ?"höchste Steigerung (Superlativ)":"Vergleichsform (Komparativ)"} von "${a.grund}"?`,
+      sub:"Adjektiv: Steigerung",
+      options: shuffle([{text:correct,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`${a.grund} → ${a.komparativ} → ${a.superlativ}.`
+    };
+  }
+  const s = pick(PRONOMEN_SAETZE);
+  const others = shuffle(PRONOMEN_POOL.filter(p=>p!==s.pronoun)).slice(0,2);
+  return {
+    prompt:`Welches Pronomen (Fürwort) steht in diesem Satz? "${s.text}"`,
+    sub:"Pronomen erkennen",
+    options: shuffle([{text:s.pronoun,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+    hint:`"${s.pronoun}" steht anstelle eines Namens – das ist ein Pronomen.`
+  };
+}
+
+const ZEITFORM_VERBS = [
+  {inf:"spielen", praesens:"spielt", praeteritum:"spielte"},
+  {inf:"laufen", praesens:"läuft", praeteritum:"lief"},
+  {inf:"essen", praesens:"isst", praeteritum:"aß"},
+  {inf:"gehen", praesens:"geht", praeteritum:"ging"},
+  {inf:"sehen", praesens:"sieht", praeteritum:"sah"},
+  {inf:"kommen", praesens:"kommt", praeteritum:"kam"},
+  {inf:"machen", praesens:"macht", praeteritum:"machte"},
+  {inf:"sagen", praesens:"sagt", praeteritum:"sagte"},
+  {inf:"haben", praesens:"hat", praeteritum:"hatte"},
+  {inf:"sein", praesens:"ist", praeteritum:"war"},
+  {inf:"singen", praesens:"singt", praeteritum:"sang"},
+  {inf:"springen", praesens:"springt", praeteritum:"sprang"}
+];
+function genDeutschZeitformen(){
+  const v = pick(ZEITFORM_VERBS);
+  const subtype = pick(["zuPraeteritum","zuPraesens","erkennen"]);
+  if(subtype==="zuPraeteritum"){
+    const others = shuffle(ZEITFORM_VERBS.filter(x=>x!==v)).slice(0,2).map(x=>x.praeteritum);
+    return {
+      prompt:`Setze ins Präteritum (Vergangenheit): "Das Pferd ${v.praesens}." → "Das Pferd ___."`,
+      sub:"",
+      options: shuffle([{text:v.praeteritum,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`Präteritum von "${v.inf}" ist "${v.praeteritum}".`
+    };
+  }
+  if(subtype==="zuPraesens"){
+    const others = shuffle(ZEITFORM_VERBS.filter(x=>x!==v)).slice(0,2).map(x=>x.praesens);
+    return {
+      prompt:`Setze ins Präsens (Gegenwart): "Das Pferd ${v.praeteritum}." → "Das Pferd ___."`,
+      sub:"",
+      options: shuffle([{text:v.praesens,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`Präsens von "${v.inf}" ist "${v.praesens}".`
+    };
+  }
+  const isPraesens = Math.random()<0.5;
+  const form = isPraesens ? v.praesens : v.praeteritum;
+  return {
+    prompt:`Ist "Das Pferd ${form}." Präsens oder Präteritum?`,
+    sub:"",
+    options: shuffle([{text:"Präsens",correct:isPraesens},{text:"Präteritum",correct:!isPraesens}]),
+    hint:`"${form}" ist ${isPraesens?"Präsens (Gegenwart)":"Präteritum (Vergangenheit)"}.`
+  };
+}
+
+const SATZ_BEISPIELE = [
+  {text:"Die Pferde galoppieren über die Wiese", art:"Aussagesatz", zeichen:"."},
+  {text:"Kommst du mit auf die Weide", art:"Fragesatz", zeichen:"?"},
+  {text:"Lauf schnell zum Stall", art:"Aufforderungssatz", zeichen:"!"},
+  {text:"Das Pferd frisst einen Apfel", art:"Aussagesatz", zeichen:"."},
+  {text:"Wie heißt dein Pferd", art:"Fragesatz", zeichen:"?"},
+  {text:"Mach das Tor bitte zu", art:"Aufforderungssatz", zeichen:"!"},
+  {text:"Die Sonne scheint heute besonders warm", art:"Aussagesatz", zeichen:"."},
+  {text:"Wer hat die Tür offen gelassen", art:"Fragesatz", zeichen:"?"},
+  {text:"Pass gut auf das Fohlen auf", art:"Aufforderungssatz", zeichen:"!"},
+  {text:"Im Stall riecht es nach frischem Heu", art:"Aussagesatz", zeichen:"."},
+  {text:"Darf ich das Pferd streicheln", art:"Fragesatz", zeichen:"?"},
+  {text:"Bring bitte den Sattel mit", art:"Aufforderungssatz", zeichen:"!"}
+];
+const REDE_BEISPIELE = [
+  {correct:'"Wie schön du bist", sagte Mira zum Pferd.', wrong:["Wie schön du bist, sagte Mira zum Pferd.", '"Wie schön du bist, sagte Mira zum Pferd."']},
+  {correct:'Das Pferd wieherte: "Ich habe Hunger!"', wrong:["Das Pferd wieherte: Ich habe Hunger!", '"Das Pferd wieherte: Ich habe Hunger!"']},
+  {correct:'"Lauf schneller!", rief die Reiterin.', wrong:["Lauf schneller!, rief die Reiterin.", '"Lauf schneller, rief die Reiterin!"']}
+];
+function genDeutschSaetze(){
+  const subtype = pick(["satzart","zeichen","rede"]);
+  if(subtype==="satzart"){
+    const s = pick(SATZ_BEISPIELE);
+    const others = ["Aussagesatz","Fragesatz","Aufforderungssatz"].filter(a=>a!==s.art);
+    return {
+      prompt:`Welche Satzart ist das? "${s.text}${s.zeichen}"`,
+      sub:"",
+      options: shuffle([{text:s.art,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`${s.art==="Fragesatz"?"Man fragt etwas":s.art==="Aufforderungssatz"?"Man fordert jemanden auf, etwas zu tun":"Man erzählt etwas"} – darum ist es ein ${s.art}.`
+    };
+  }
+  if(subtype==="zeichen"){
+    const s = pick(SATZ_BEISPIELE);
+    const others = [".","?","!"].filter(z=>z!==s.zeichen);
+    return {
+      prompt:`Welches Satzzeichen passt? "${s.text}___"`,
+      sub:"",
+      options: shuffle([{text:s.zeichen,correct:true}, ...others.map(o=>({text:o,correct:false}))]),
+      hint:`Ein ${s.art} endet mit "${s.zeichen}".`
+    };
+  }
+  const r = pick(REDE_BEISPIELE);
+  return {
+    prompt:`Welcher Satz ist richtig geschrieben (wörtliche Rede)?`,
+    sub:"",
+    options: shuffle([{text:r.correct,correct:true}, ...r.wrong.map(w=>({text:w,correct:false}))]),
+    hint:`Wörtliche Rede steht immer in Anführungszeichen "…" – genau das, was gesagt wird.`
+  };
+}
+
+const LESE_TEXTE = [
+  {text:"Mira lief früh am Morgen zum Stall. Dort entdeckte sie ein glitzerndes Ei zwischen dem Stroh. Vorsichtig hob sie es auf und trug es zu Funkelstern. Das Pferd schnaubte freudig, als das Ei zu leuchten begann. Plötzlich schlüpfte ein winziges Glühwürmchen heraus.",
+   questions:[
+     {q:"Wo fand Mira das Ei?", correct:"Im Stroh im Stall", wrong:["Auf der Wiese","Im Wald"]},
+     {q:"Was schlüpfte am Ende aus dem Ei?", correct:"Ein Glühwürmchen", wrong:["Ein kleines Pferd","Ein Vogel"]},
+     {q:"Was geschah zuerst?", correct:"Mira lief zum Stall", wrong:["Das Ei begann zu leuchten","Ein Glühwürmchen schlüpfte heraus"]}
+   ]},
+  {text:"Am Abend zog ein starker Wind über das Gestüt. Die Pferde standen unruhig in ihren Boxen. Mira nahm eine Laterne und ging nach draußen. Sie sang ein leises Lied, und langsam beruhigten sich die Tiere. Am Ende schliefen alle Pferde friedlich ein.",
+   questions:[
+     {q:"Was machte Mira, um die Pferde zu beruhigen?", correct:"Sie sang ein Lied", wrong:["Sie gab ihnen Äpfel","Sie öffnete die Boxen"]},
+     {q:"Wie fühlten sich die Pferde am Ende?", correct:"Friedlich und ruhig", wrong:["Immer noch unruhig","Hungrig"]},
+     {q:"Was geschah zuerst?", correct:"Ein starker Wind zog auf", wrong:["Mira sang ein Lied","Die Pferde schliefen ein"]}
+   ]},
+  {text:"Rubin, das rotbraune Pferd, liebte es, im Bach zu planschen. Eines Tages fand er dort einen glänzenden Stein. Er brachte ihn stolz zu Mira. Der Stein war in Wirklichkeit ein kleiner Zauberkristall. Von da an leuchtete er jede Nacht sanft in Rubins Box.",
+   questions:[
+     {q:"Wo fand Rubin den Stein?", correct:"Im Bach", wrong:["Im Wald","Auf der Weide"]},
+     {q:"Was war der Stein wirklich?", correct:"Ein Zauberkristall", wrong:["Ein normaler Kieselstein","Ein Ei"]}
+   ]},
+  {text:"Im Herbst fielen bunte Blätter von den Bäumen um das Gestüt. Mondschatten, das nachtblaue Pferd, sammelte gerne die schönsten Blätter ein. Er legte sie vor den Stalleingang. Die anderen Pferde bewunderten die bunte Blättersammlung jeden Morgen.",
+   questions:[
+     {q:"Welches Pferd sammelte Blätter?", correct:"Mondschatten", wrong:["Rubin","Funkelstern"]},
+     {q:"Wo legte das Pferd die Blätter hin?", correct:"Vor den Stalleingang", wrong:["In den Bach","Auf die Weide"]}
+   ]},
+  {text:"Sonnenglanz wachte jeden Morgen als Erster auf. Er wieherte fröhlich, sobald die ersten Sonnenstrahlen den Stall erreichten. Die anderen Pferde nannten ihn liebevoll den Weckdienst des Gestüts. Ohne ihn würden alle viel zu spät aufwachen.",
+   questions:[
+     {q:"Wann wachte Sonnenglanz auf?", correct:"Als Erster, am frühen Morgen", wrong:["Als Letzter","Erst mittags"]},
+     {q:"Welchen Spitznamen gaben ihm die anderen Pferde?", correct:"Den Weckdienst", wrong:["Den Sternenwächter","Den Nachtreiter"]}
+   ]},
+  {text:"Perlenglanz mochte besonders die Marktage in Fabelhausen. Dort roch es nach frischem Brot und süßen Beeren. Einmal verlor ein kleines Mädchen ihren Korb. Perlenglanz brachte ihn ihr sanft mit dem Maul zurück. Das Mädchen bedankte sich mit einem großen Apfel.",
+   questions:[
+     {q:"Was verlor das Mädchen?", correct:"Ihren Korb", wrong:["Ihren Hut","Ihr Buch"]},
+     {q:"Womit bedankte sich das Mädchen?", correct:"Mit einem Apfel", wrong:["Mit einer Blume","Mit einem Lied"]}
+   ]}
+];
+function genDeutschLesen(){
+  const t = pick(LESE_TEXTE);
+  const q = pick(t.questions);
+  const options = shuffle([{text:q.correct,correct:true}, ...q.wrong.map(w=>({text:w,correct:false}))]);
+  return {
+    prompt: t.text,
+    sub: q.q,
+    options,
+    hint:`Lies den Text noch einmal genau durch – die Antwort steht direkt darin.`
+  };
+}
+
+const WORTFAMILIEN = [
+  {members:["Fahrer","Ausfahrt","Fahrrad","Abfahrt"], outsider:"fangen"},
+  {members:["Spielplatz","Mitspieler","Spielzeug","Spielfeld"], outsider:"springen"},
+  {members:["Läufer","Auslauf","Laufrad","Wettlauf"], outsider:"lesen"},
+  {members:["Lernstoff","Lernheft","Lerneifer"], outsider:"backen"},
+  {members:["Trinkwasser","Trinkflasche","Trinkbecher"], outsider:"malen"},
+  {members:["Malkasten","Maler","Malstunde"], outsider:"trinken"},
+  {members:["Turnhalle","Turnschuh","Turnstunde"], outsider:"kochen"},
+  {members:["Kochtopf","Kochlöffel","Kochbuch"], outsider:"turnen"},
+  {members:["Reitstunde","Reiter","Reithelm"], outsider:"schwimmen"},
+  {members:["Schwimmbad","Schwimmring","Schwimmbecken"], outsider:"reiten"}
+];
+function genDeutschWortfamilie(){
+  const f = pick(WORTFAMILIEN);
+  const chosenMembers = shuffle(f.members).slice(0,3);
+  const options = shuffle([...chosenMembers.map(m=>({text:m,correct:false})), {text:f.outsider,correct:true}]);
+  return {
+    prompt:`Welches Wort gehört NICHT zur Wortfamilie?`,
+    sub:"",
+    options,
+    hint:`${chosenMembers.join(", ")} gehören zusammen. "${f.outsider}" hat einen anderen Wortstamm.`
+  };
+}
+
+const ABC_WORDPOOL = ["Apfel","Baum","Ente","Fohlen","Gestüt","Hufeisen","Igel","Junge","Kutsche","Laterne","Mähne","Nuss","Pferd","Quelle","Reiter","Sattel","Trense","Ulme","Vogel","Wiese","Zaun"];
+function genDeutschAbc(){
+  const words = shuffle(ABC_WORDPOOL).slice(0,4);
+  const sorted = words.slice().sort((a,b)=>a.localeCompare(b,"de"));
+  const correct = sorted[0];
+  const options = shuffle(words.map(w=>({text:w, correct:w===correct})));
+  return {
+    prompt:`Welches Wort kommt im Wörterbuch (ABC) zuerst?`,
+    sub: words.join(" · "),
+    options,
+    hint:`Vergleiche die Anfangsbuchstaben der Reihe nach: ${sorted.join(" < ")}.`
+  };
+}
+function genDeutschWortschatz(){
+  return Math.random()<0.5 ? genDeutschWortfamilie() : genDeutschAbc();
+}
+
+function generateDeutschTask(topic, level){
+  let task;
+  if(topic==="rechtschreibung") task = genDeutschRechtschreibung(level);
+  else if(topic==="wortarten") task = genDeutschWortarten();
+  else if(topic==="zeitformen") task = genDeutschZeitformen();
+  else if(topic==="saetze") task = genDeutschSaetze();
+  else if(topic==="lesen") task = genDeutschLesen();
+  else task = genDeutschWortschatz();
+  return Object.assign({topic, level}, task);
+}
+
+// ---------- HSU generators ----------
+
+const HSU_NATUR = [
+  {q:"In welchem Stockwerk des Waldes bauen die meisten Vögel ihre Nester?", correct:"In der Baumkrone", wrong:["Auf dem Waldboden","In der Strauchschicht"], hint:"Vögel bauen ihre Nester oft hoch oben in den Baumkronen, geschützt vor Feinden."},
+  {q:"Welches Tier lebt typischerweise in einem Bau unter der Erde?", correct:"Der Fuchs", wrong:["Das Eichhörnchen","Der Specht"], hint:"Der Fuchs gräbt sich einen Bau als Unterschlupf und Kinderstube."},
+  {q:"Was passiert mit Wasser, wenn die Sonne es erwärmt?", correct:"Es verdunstet und steigt als Wasserdampf auf", wrong:["Es wird sofort zu Eis","Es versickert nur im Boden"], hint:"Beim Verdunsten wird Wasser zu unsichtbarem Wasserdampf und steigt in die Luft."},
+  {q:"Wie nennt man Regen, Schnee oder Hagel, der aus den Wolken fällt?", correct:"Niederschlag", wrong:["Verdunstung","Kondensation"], hint:"Niederschlag ist Wasser, das aus den Wolken auf die Erde fällt."},
+  {q:"Welche Pflanze wächst typischerweise in der Krautschicht des Waldes?", correct:"Farn", wrong:["Eiche","Buche"], hint:"Farne und Gräser wachsen ganz unten, in der Krautschicht des Waldes."},
+  {q:"Was zeigt ein Regenmesser an?", correct:"Wie viel Regen gefallen ist", wrong:["Wie warm es ist","Wie stark der Wind weht"], hint:"Ein Regenmesser sammelt Regenwasser und zeigt die Menge in Millimetern."},
+  {q:"Welches Tier hält im Winter einen Winterschlaf?", correct:"Der Igel", wrong:["Das Reh","Der Fuchs"], hint:"Der Igel schläft den ganzen Winter tief und braucht dabei kaum Energie."},
+  {q:"Wo lebt ein Eichhörnchen hauptsächlich?", correct:"In den Baumkronen", wrong:["Im Wasser","Unter der Erde"], hint:"Eichhörnchen bauen ihre Nester, sogenannte Kobel, hoch in den Bäumen."},
+  {q:"Was brauchen Pflanzen zum Wachsen, neben Wasser und Licht?", correct:"Nährstoffe aus dem Boden", wrong:["Nur Schnee","Nur Nebel"], hint:"Pflanzen ziehen wichtige Nährstoffe mit ihren Wurzeln aus dem Boden."},
+  {q:"Wie nennt man den Kreislauf, bei dem Wasser verdunstet, Wolken bildet und wieder abregnet?", correct:"Wasserkreislauf", wrong:["Windkreislauf","Jahreskreislauf"], hint:"Dieser ständige Kreislauf von Verdunsten, Wolkenbildung und Regen heißt Wasserkreislauf."},
+  {q:"Welche Schicht des Waldes liegt direkt über dem Waldboden?", correct:"Die Krautschicht", wrong:["Die Baumkrone","Der Himmel"], hint:"Direkt über dem Boden wächst die Krautschicht mit Gräsern, Moosen und Farnen."},
+  {q:"Was zeigt eine Wetterfahne an?", correct:"Die Windrichtung", wrong:["Die Temperatur","Die Niederschlagsmenge"], hint:"Eine Wetterfahne dreht sich in die Richtung, aus der der Wind weht."},
+  {q:"Welches Tier baut einen Damm aus Ästen?", correct:"Der Biber", wrong:["Der Hase","Das Reh"], hint:"Biber stauen mit ihren selbstgebauten Dämmen Bäche zu kleinen Seen."},
+  {q:"Warum verlieren viele Bäume im Herbst ihre Blätter?", correct:"Um im Winter Wasser und Energie zu sparen", wrong:["Weil es ihnen zu warm ist","Weil Vögel sie abpicken"], hint:"Ohne Blätter verlieren Bäume im Winter weniger Wasser und sparen Energie."},
+  {q:"Was ist Tau?", correct:"Wassertropfen, die sich morgens auf Pflanzen bilden", wrong:["Gefrorener Regen","Aufsteigender Nebel"], hint:"Tau entsteht, wenn feuchte Luft nachts an kühlen Blättern kondensiert."}
+];
+const HSU_KOERPER = [
+  {q:"Welche Lebensmittelgruppe sollte man laut Ernährungspyramide am meisten essen?", correct:"Obst und Gemüse", wrong:["Süßigkeiten","Fleisch"], hint:"Obst und Gemüse stehen in der Ernährungspyramide ganz unten – davon darf man am meisten essen."},
+  {q:"Was passiert zuerst mit der Nahrung, wenn wir essen?", correct:"Sie wird im Mund gekaut", wrong:["Sie wird im Magen gekaut","Sie wird sofort verdaut"], hint:"Im Mund wird die Nahrung zuerst zerkleinert und mit Speichel vermischt."},
+  {q:"Wohin gelangt die Nahrung nach der Speiseröhre?", correct:"In den Magen", wrong:["In die Lunge","Direkt in den Darm"], hint:"Nach der Speiseröhre wandert die Nahrung weiter in den Magen."},
+  {q:"Wie oft am Tag sollte man sich mindestens die Zähne putzen?", correct:"Zweimal", wrong:["Einmal pro Woche","Nur nach dem Aufstehen"], hint:"Zahnärzte empfehlen, sich morgens und abends die Zähne zu putzen."},
+  {q:"Welche Zähne braucht man besonders zum Abbeißen?", correct:"Die Schneidezähne", wrong:["Die Backenzähne","Die Weisheitszähne"], hint:"Die vorderen Schneidezähne sind scharf und zum Abbeißen da."},
+  {q:"Was sollte man täglich trinken, um gesund zu bleiben?", correct:"Viel Wasser", wrong:["Nur Limonade","Möglichst wenig"], hint:"Wasser ist das gesündeste Getränk und wichtig für den ganzen Körper."},
+  {q:"Was liegt in der Ernährungspyramide ganz oben und sollte selten gegessen werden?", correct:"Süßigkeiten und Fett", wrong:["Brot und Nudeln","Obst"], hint:"Süßigkeiten und fettige Speisen stehen ganz oben – davon nur wenig essen."},
+  {q:"Welches Organ pumpt das Blut durch den Körper?", correct:"Das Herz", wrong:["Die Lunge","Der Magen"], hint:"Das Herz schlägt ständig und pumpt das Blut durch alle Adern."},
+  {q:"Womit atmen wir?", correct:"Mit der Lunge", wrong:["Mit dem Magen","Mit dem Herzen"], hint:"Die Lunge nimmt beim Einatmen Sauerstoff aus der Luft auf."},
+  {q:"Warum ist Bewegung für den Körper wichtig?", correct:"Sie hält Muskeln und Herz gesund", wrong:["Sie macht nur müde","Sie ist unwichtig"], hint:"Regelmäßige Bewegung stärkt Muskeln, Herz und Kreislauf."},
+  {q:"Was passiert im Magen mit der Nahrung?", correct:"Sie wird mit Magensäure weiterverdaut", wrong:["Sie wird nur gelagert","Sie wird sofort ausgeschieden"], hint:"Im Magen zersetzt Magensäure die Nahrung weiter in kleine Teile."},
+  {q:"Wo werden die Nährstoffe aus der Nahrung ins Blut aufgenommen?", correct:"Im Darm", wrong:["Im Mund","In der Speiseröhre"], hint:"Im Darm gelangen die Nährstoffe aus der Nahrung ins Blut."},
+  {q:"Wie viele Stunden Schlaf brauchen Kinder etwa pro Nacht?", correct:"Etwa 10 Stunden", wrong:["Etwa 4 Stunden","Etwa 20 Stunden"], hint:"Kinder brauchen zum Wachsen und Erholen etwa 10 Stunden Schlaf."},
+  {q:"Was schützt die Zähne am besten vor Karies?", correct:"Regelmäßiges Zähneputzen und wenig Süßes", wrong:["Viel Limonade trinken","Nie zum Zahnarzt gehen"], hint:"Putzen und wenig Zucker schützen die Zähne vor Karies."},
+  {q:"Welches Organ zerlegt die Nahrung zuerst mit den Zähnen?", correct:"Der Mund", wrong:["Der Darm","Die Lunge"], hint:"Im Mund wird die Nahrung zuerst gekaut und zerkleinert."}
+];
+const HSU_ZEIT = [
+  {q:"Womit schrieben Schulkinder früher oft statt in ein Heft?", correct:"Auf eine Schiefertafel", wrong:["Auf einem Tablet-Computer","Mit einem Kugelschreiber"], hint:"Früher schrieben Kinder oft mit Kreide auf eine kleine Schiefertafel."},
+  {q:"Womit wurde früher oft geheizt, bevor es moderne Heizungen gab?", correct:"Mit einem Kachelofen und Holz", wrong:["Mit Strom aus der Steckdose","Mit Solarzellen"], hint:"Früher heizten viele Häuser mit einem Ofen, der mit Holz oder Kohle befeuert wurde."},
+  {q:"Wie viele Monate hat ein Jahr?", correct:"12", wrong:["10","14"], hint:"Ein Jahr hat 12 Monate, von Januar bis Dezember."},
+  {q:"Welche Jahreszeit kommt nach dem Winter?", correct:"Der Frühling", wrong:["Der Herbst","Der Sommer"], hint:"Auf den Winter folgt der Frühling, wenn alles zu blühen beginnt."},
+  {q:"Womit fuhren Menschen oft, bevor es Autos gab?", correct:"Mit einer Pferdekutsche", wrong:["Mit dem Auto","Mit einem Elektrozug"], hint:"Bevor es Autos gab, fuhren die Menschen oft mit einer Pferdekutsche."},
+  {q:"Was zeigt ein Kalender an?", correct:"Tage, Wochen und Monate des Jahres", wrong:["Nur die Uhrzeit","Nur das Wetter"], hint:"Ein Kalender zeigt, welcher Tag, welche Woche und welcher Monat gerade ist."},
+  {q:"Wie viele Tage hat eine Woche?", correct:"7", wrong:["5","10"], hint:"Eine Woche hat 7 Tage, von Montag bis Sonntag."},
+  {q:"Wie wusch man früher meist Wäsche, bevor es Waschmaschinen gab?", correct:"Von Hand mit Waschbrett und Seife", wrong:["Mit einem Fön","Mit einem Staubsauger"], hint:"Früher wusch man Wäsche mühsam von Hand mit einem Waschbrett."},
+  {q:"Wie nennt man den Ablauf der vier Jahreszeiten, der sich jedes Jahr wiederholt?", correct:"Der Jahreskreis", wrong:["Der Tagesplan","Der Stundenplan"], hint:"Frühling, Sommer, Herbst und Winter bilden zusammen den Jahreskreis."},
+  {q:"Was benutzten Menschen früher statt Handys, um Nachrichten zu senden?", correct:"Briefe", wrong:["E-Mails","Videoanrufe"], hint:"Früher schrieb man Briefe und schickte sie mit der Post."},
+  {q:"In welcher Jahreszeit werden die Tage am kürzesten?", correct:"Im Winter", wrong:["Im Sommer","Im Frühling"], hint:"Im Winter ist es am längsten dunkel, die Tage sind am kürzesten."},
+  {q:"Was ist ein Museum?", correct:"Ein Ort, an dem alte Dinge aus der Vergangenheit gezeigt werden", wrong:["Ein Ort zum Einkaufen","Ein Ort nur zum Spielen"], hint:"In einem Museum kann man Dinge aus früheren Zeiten anschauen und viel über die Vergangenheit lernen."}
+];
+const HSU_RAUM = [
+  {q:"Welche Himmelsrichtung liegt der Mittagssonne am nächsten (auf der Nordhalbkugel)?", correct:"Süden", wrong:["Norden","Westen"], hint:"Auf der Nordhalbkugel steht die Mittagssonne meist im Süden."},
+  {q:"Welche Himmelsrichtung liegt Norden gegenüber?", correct:"Süden", wrong:["Osten","Westen"], hint:"Norden und Süden liegen sich immer gegenüber."},
+  {q:"Welche Himmelsrichtung liegt Osten gegenüber?", correct:"Westen", wrong:["Norden","Süden"], hint:"Osten und Westen liegen sich immer gegenüber."},
+  {q:"Wo geht die Sonne auf?", correct:"Im Osten", wrong:["Im Westen","Im Süden"], hint:"Die Sonne geht immer im Osten auf und im Westen unter."},
+  {q:"Wo geht die Sonne unter?", correct:"Im Westen", wrong:["Im Osten","Im Norden"], hint:"Am Abend geht die Sonne im Westen unter."},
+  {q:"Was zeigt ein Kompass an?", correct:"Die Himmelsrichtungen", wrong:["Die Uhrzeit","Die Temperatur"], hint:"Die Nadel eines Kompasses zeigt immer nach Norden."},
+  {q:"Was bedeutet ein blaues Flächenzeichen meist auf einer Landkarte?", correct:"Wasser (See oder Fluss)", wrong:["Wald","Straße"], hint:"Blau steht auf Karten fast immer für Gewässer wie Seen oder Flüsse."},
+  {q:"Was bedeutet ein grünes Flächenzeichen meist auf einer Landkarte?", correct:"Wald oder Wiese", wrong:["Wasser","Stadt"], hint:"Grün zeigt auf Karten meist Wald- oder Wiesenflächen."},
+  {q:"In welchem Bundesland liegt Franken?", correct:"In Bayern", wrong:["In Hessen","In Sachsen"], hint:"Franken ist ein Teil des Bundeslandes Bayern."},
+  {q:"Wie heißt die Landeshauptstadt von Bayern?", correct:"München", wrong:["Nürnberg","Augsburg"], hint:"München ist die Landeshauptstadt von Bayern."},
+  {q:"Was zeigt der Maßstab auf einer Karte an?", correct:"Wie stark die Wirklichkeit verkleinert wurde", wrong:["Die Windrichtung","Die Uhrzeit"], hint:"Der Maßstab zeigt, wie viele echte Meter einem Zentimeter auf der Karte entsprechen."},
+  {q:"Welche Himmelsrichtung liegt zwischen Norden und Osten?", correct:"Nordosten", wrong:["Südwesten","Nordwesten"], hint:"Zwischen Norden und Osten liegt die Zwischenrichtung Nordosten."},
+  {q:"Was sollte man vor dem Überqueren einer Straße immer tun?", correct:"Nach links und rechts schauen", wrong:["Sofort loslaufen","Nur nach vorne schauen"], hint:"Vor dem Überqueren einer Straße schaut man erst nach links, dann nach rechts."}
+];
+const HSU_GESELLSCHAFT = [
+  {q:"Was ist ein Klassenrat?", correct:"Ein Treffen, bei dem die Klasse gemeinsam über Regeln und Probleme spricht", wrong:["Eine zusätzliche Pause","Ein Fach wie Mathe"], hint:"Im Klassenrat besprechen alle Kinder gemeinsam, was in der Klasse gut läuft und was nicht."},
+  {q:"Was ist ein Kinderrecht?", correct:"Zum Beispiel das Recht auf Bildung und Schutz", wrong:["Das Recht, immer zu bestimmen","Das Recht, nie zur Schule zu müssen"], hint:"Kinderrechte schützen zum Beispiel das Recht auf Bildung, Gesundheit und Schutz vor Gewalt."},
+  {q:"Was sollte man tun, wenn man in der Klasse Streit hat?", correct:"Miteinander reden und eine Lösung suchen", wrong:["Den anderen einfach ignorieren","Sofort laut schreien"], hint:"Bei Streit hilft es, ruhig miteinander zu reden und gemeinsam eine Lösung zu finden."},
+  {q:"Warum sind Regeln in einer Klasse wichtig?", correct:"Damit sich alle sicher und fair behandelt fühlen", wrong:["Damit nur der Lehrer bestimmen darf","Damit niemand mehr etwas sagen darf"], hint:"Regeln sorgen dafür, dass alle fair miteinander umgehen und sich sicher fühlen."},
+  {q:"Was bedeutet Mitbestimmung im Klassenrat?", correct:"Alle Kinder dürfen ihre Meinung sagen und mitentscheiden", wrong:["Nur die Klassensprecher dürfen reden","Nur der Lehrer entscheidet"], hint:"Mitbestimmung heißt, dass jedes Kind seine Meinung sagen und mitentscheiden darf."},
+  {q:"Was macht ein Klassensprecher?", correct:"Er vertritt die Meinungen der Klasse", wrong:["Er bestimmt allein alle Regeln","Er muss immer der Beste in der Klasse sein"], hint:"Ein Klassensprecher spricht im Namen der Klasse und vertritt ihre Anliegen."},
+  {q:"Was gehört zu einem guten Zusammenleben in der Klasse?", correct:"Rücksicht nehmen und einander helfen", wrong:["Nur an sich selbst denken","Andere auslachen"], hint:"Ein gutes Zusammenleben bedeutet, aufeinander Rücksicht zu nehmen und sich zu helfen."},
+  {q:"Was kann man tun, wenn ein Kind in der Klasse gehänselt wird?", correct:"Einem Erwachsenen Bescheid sagen und helfen", wrong:["Einfach wegschauen","Mitmachen"], hint:"Wenn jemand gehänselt wird, sollte man helfen oder einer Lehrkraft Bescheid sagen."},
+  {q:"Was bedeutet das Wort \"Demokratie\" vereinfacht?", correct:"Alle dürfen mitentscheiden", wrong:["Nur einer entscheidet für alle","Es gibt keine Regeln"], hint:"In einer Demokratie dürfen alle Menschen bei Entscheidungen mitreden."},
+  {q:"Warum ist es wichtig, anderen Kindern zuzuhören?", correct:"Damit man ihre Meinung und Gefühle versteht", wrong:["Das ist nicht wichtig","Nur um sie zu korrigieren"], hint:"Zuhören zeigt Respekt und hilft, andere besser zu verstehen."},
+  {q:"Was ist ein faires Spiel?", correct:"Ein Spiel, bei dem sich alle an die Regeln halten", wrong:["Ein Spiel, das man immer gewinnen muss","Ein Spiel ohne Regeln"], hint:"Fair spielen heißt, sich an die vereinbarten Regeln zu halten, auch wenn man verliert."},
+  {q:"Was kann die Klasse tun, wenn viele Kinder mit einer Regel unzufrieden sind?", correct:"Im Klassenrat darüber sprechen und abstimmen", wrong:["Die Regel heimlich brechen","Niemandem davon erzählen"], hint:"Im Klassenrat kann die Klasse gemeinsam über unzufriedene Regeln sprechen und abstimmen."}
+];
+const HSU_BANKS = { natur:HSU_NATUR, koerper:HSU_KOERPER, zeitWandel:HSU_ZEIT, raum:HSU_RAUM, gesellschaft:HSU_GESELLSCHAFT };
+function generateHsuTask(topic, level){
+  const item = pick(HSU_BANKS[topic]);
+  return {
+    topic, level,
+    prompt: item.q,
+    sub:"",
+    options: shuffle([{text:item.correct,correct:true}, ...item.wrong.map(w=>({text:w,correct:false}))]),
+    hint: item.hint
+  };
+}
+
+function generateTask(subjectKey, topic, level, theme){
+  if(subjectKey==="mathe") return generateMatheTask(topic, level, theme);
+  if(subjectKey==="deutsch") return generateDeutschTask(topic, level);
+  return generateHsuTask(topic, level);
+}
+
+function generateMatheTask(topic, level, theme){
   if(topic==="einmaleins") return genEinmaleins(level);
-  if(topic==="zahlenraum") return genZahlenraum(level);
-  if(topic==="textaufgaben") return genTextaufgaben(level, theme);
+  if(topic==="zahlenraum") return genZahlenraumSinn(level);
+  if(topic==="halbschriftlich") return genHalbschriftlich(level);
+  if(topic==="schriftlich") return genSchriftlich(level);
+  if(topic==="malDiv") return genMalDiv(level);
+  if(topic==="textaufgaben") return genSachaufgabeFRA(level, theme);
+  if(topic==="geometrie") return genGeometrie(level);
+  if(topic==="daten") return genDaten(level);
   return genUhrzeitGroessen(level);
 }
 
 // ---------- Task rendering & adaptive logic ----------
 
 function clampLevel(l){ return Math.max(1, Math.min(5, l)); }
+function levelLabel(level){ return level<=2 ? "leicht" : level===3 ? "mittel" : "schwer"; }
+
+function currentChapter(){ return chaptersForSubject(currentSubject).find(c=>c.id===view.chapterId); }
+
+function showHint(wrapEl, hintText){
+  const chapter = currentChapter();
+  const hintSlot = wrapEl.querySelector("#hintSlot");
+  hintSlot.innerHTML = `
+    <div class="hint-bubble">
+      <span class="horse-emoji">${chapter.horse.emoji}</span>
+      <div><b>${chapter.horse.name} flüstert einen Tipp:</b>${hintText}<br><span class="small-muted">Versuch es gleich nochmal – du schaffst das! 💪</span></div>
+    </div>`;
+}
+
+function awardTaskSuccess(firstTry, originEl){
+  const profile = curProfile();
+  const topic = view.currentTaskTopic;
+  const statObj = subjectProgress(profile,currentSubject).stats[topic];
+  if(firstTry){
+    statObj.correctStreak++; statObj.wrongStreak = 0;
+    statObj.correct++;
+    if(statObj.correctStreak>=3){ statObj.level = clampLevel(statObj.level+1); statObj.correctStreak=0; }
+  } else {
+    statObj.correct++;
+  }
+  const starsGained = firstTry ? 2 : 1;
+  profile.stars += starsGained;
+  view.chapterStars += starsGained;
+  saveState();
+  if(originEl) flyStars(originEl, starsGained);
+  setTimeout(()=>{
+    view.taskIndex++;
+    view.currentTask = null;
+    render();
+  }, 650);
+}
+
+function registerTaskFailure(){
+  const profile = curProfile();
+  const topic = view.currentTaskTopic;
+  const statObj = subjectProgress(profile,currentSubject).stats[topic];
+  if(!view.attemptFailed){
+    view.attemptFailed = true;
+    statObj.wrong++;
+    statObj.wrongStreak++; statObj.correctStreak = 0;
+    if(statObj.wrongStreak>=2){ statObj.level = clampLevel(statObj.level-1); statObj.wrongStreak=0; }
+    saveState();
+  }
+}
 
 function renderTask(){
-  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  const chapters = chaptersForSubject(currentSubject);
+  const chapter = chapters.find(c=>c.id===view.chapterId);
   const profile = curProfile();
   topBar(state.currentProfile);
   const idx = view.taskIndex;
@@ -904,13 +1944,16 @@ function renderTask(){
     return goto({name:"reward", chapterId:chapter.id, chapterStars:view.chapterStars});
   }
   const topic = view.topics[idx];
-  const level = subjectProgress(profile,"mathe").stats[topic].level;
+  const level = subjectProgress(profile,currentSubject).stats[topic].level;
   if(!view.currentTask || view.currentTaskTopic!==topic){
-    view.currentTask = generateTask(topic, level, chapter.theme);
+    view.currentTask = generateTask(currentSubject, topic, level, chapter.theme);
     view.currentTaskTopic = topic;
     view.attemptFailed = false;
+    view.subStep = 0;
+    view.writtenFilled = null;
   }
   const task = view.currentTask;
+  const topics = topicsForSubject(currentSubject);
 
   const wrap = document.createElement("div");
   wrap.className = "task-wrap";
@@ -920,19 +1963,28 @@ function renderTask(){
     else if(i===idx) cls+=" current";
     return `<div class="${cls}"></div>`;
   }).join("");
-  wrap.innerHTML = `
-    <div class="progress-row">${dots}</div>
-    <div class="question-card">
-      <div class="chapter-topic">${TOPIC_META[topic].emoji} ${TOPIC_META[topic].label} · Stufe ${level}</div>
-      ${task.visual?`<div>${task.visual}</div>`:""}
-      <div class="question-text">${task.prompt}</div>
-      ${task.sub?`<div class="question-sub">${task.sub}</div>`:""}
-      <div class="options-grid" id="optionsGrid"></div>
-      <div id="hintSlot"></div>
-    </div>
-  `;
+  wrap.innerHTML = `<div class="progress-row">${dots}</div>`;
   app.appendChild(wrap);
-  const grid = wrap.querySelector("#optionsGrid");
+
+  if(task.type==="writtenAddition") renderWrittenAdditionTask(wrap, task, topic, level, topics);
+  else if(task.type==="sachaufgabeFRA") renderSachaufgabeTask(wrap, task, topic, level, topics);
+  else renderStandardTask(wrap, task, topic, level, topics);
+}
+
+function renderStandardTask(wrap, task, topic, level, topics){
+  const card = document.createElement("div");
+  card.className = "question-card";
+  card.innerHTML = `
+    <div class="chapter-topic">${topics[topic].emoji} ${topics[topic].label} · Stufe ${level} (${levelLabel(level)})</div>
+    ${task.visual?`<div>${task.visual}</div>`:""}
+    <div class="question-text">${task.prompt}</div>
+    ${task.sub?`<div class="question-sub">${task.sub}</div>`:""}
+    <div class="options-grid" id="optionsGrid"></div>
+    ${task.steps?`<button class="btn ghost" id="toggleSteps" style="font-size:16px; padding:10px 18px; min-height:auto;">🔍 Rechenweg zeigen</button><div id="stepsPanel"></div>`:""}
+    <div id="hintSlot"></div>
+  `;
+  wrap.appendChild(card);
+  const grid = card.querySelector("#optionsGrid");
   task.options.forEach(opt=>{
     const b = document.createElement("button");
     b.className = "opt-btn";
@@ -940,51 +1992,143 @@ function renderTask(){
     b.onclick = ()=> handleAnswer(opt.correct, b, wrap);
     grid.appendChild(b);
   });
+  const stepsBtn = card.querySelector("#toggleSteps");
+  if(stepsBtn){
+    let shown = false;
+    stepsBtn.onclick = ()=>{
+      shown = !shown;
+      card.querySelector("#stepsPanel").innerHTML = shown
+        ? `<div class="hint-bubble" style="background:#eaf1ff; border-color:#adc6ff;">${task.steps.map(s=>`<div>${s}</div>`).join("")}</div>`
+        : "";
+      stepsBtn.textContent = shown ? "🙈 Rechenweg verbergen" : "🔍 Rechenweg zeigen";
+    };
+  }
+}
+
+function renderWrittenAdditionTask(wrap, task, topic, level, topics){
+  if(!view.writtenFilled) view.writtenFilled = new Array(task.n).fill(null);
+  const filled = view.writtenFilled;
+  const col = view.subStep || 0;
+  const placeNames = ["Einer","Zehner","Hunderter","Tausender"];
+  const card = document.createElement("div");
+  card.className = "question-card";
+  function cellsFor(rtlArr, isResult){
+    let html = "";
+    for(let i=task.n-1;i>=0;i--){
+      const val = isResult ? (filled[i]!==null ? filled[i] : "") : rtlArr[i];
+      const active = isResult && i===col;
+      html += `<div style="width:38px; height:44px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; border-radius:8px; background:${active?"#fff3cd":"transparent"}; border:${active?"3px solid var(--gold-dark)":"3px solid transparent"};">${val}</div>`;
+    }
+    return html;
+  }
+  card.innerHTML = `
+    <div class="chapter-topic">${topics[topic].emoji} ${topics[topic].label} · Stufe ${level} (${levelLabel(level)})</div>
+    <div class="question-text">Rechne schriftlich von rechts nach links:</div>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; color:var(--ink);">
+      <div style="display:flex; gap:4px;">${cellsFor(task.aRTL,false)}</div>
+      <div style="display:flex; gap:4px; align-items:center;"><span style="font-size:22px; margin-right:6px;">+</span>${cellsFor(task.bRTL,false)}</div>
+      <div style="width:100%; border-top:3px solid var(--ink); margin:2px 0;"></div>
+      <div style="display:flex; gap:4px;">${cellsFor(null,true)}</div>
+    </div>
+    <div class="question-sub">Welche Ziffer kommt in die ${placeNames[col]}-Spalte?</div>
+    <div class="options-grid" id="optionsGrid" style="grid-template-columns:repeat(5,1fr);"></div>
+    <div id="hintSlot"></div>
+  `;
+  wrap.appendChild(card);
+  const grid = card.querySelector("#optionsGrid");
+  const correctDigit = task.sumRTL[col];
+  const distractors = uniq(shuffle([0,1,2,3,4,5,6,7,8,9].filter(d=>d!==correctDigit))).slice(0,3);
+  shuffle([correctDigit, ...distractors]).forEach(d=>{
+    const b = document.createElement("button");
+    b.className = "opt-btn";
+    b.style.padding = "14px";
+    b.style.minHeight = "56px";
+    b.textContent = String(d);
+    b.onclick = ()=> handleWrittenDigit(d===correctDigit, b, wrap, task);
+    grid.appendChild(b);
+  });
+}
+
+function handleWrittenDigit(isCorrect, btnEl, wrapEl, task){
+  const grid = wrapEl.querySelector("#optionsGrid");
+  grid.querySelectorAll("button").forEach(b=> b.disabled = true);
+  if(isCorrect){
+    btnEl.classList.add("correct-flash");
+    view.writtenFilled[view.subStep] = task.sumRTL[view.subStep];
+    if(view.subStep < task.n-1){
+      setTimeout(()=>{ view.subStep++; render(); }, 500);
+    } else {
+      const firstTry = !view.attemptFailed;
+      awardTaskSuccess(firstTry, btnEl);
+    }
+  } else {
+    btnEl.classList.add("try-again");
+    registerTaskFailure();
+    showHint(wrapEl, task.hint);
+    setTimeout(()=>{
+      grid.querySelectorAll("button").forEach(b=>{ b.disabled=false; b.classList.remove("try-again"); });
+    }, 900);
+  }
+}
+
+function renderSachaufgabeTask(wrap, task, topic, level, topics){
+  const card = document.createElement("div");
+  card.className = "question-card";
+  const step = view.subStep || 0;
+  const stepLabels = ["1. Welche Frage passt?","2. Welche Rechnung passt?","3. Wie lautet die Antwort?"];
+  const stepOptions = step===0 ? task.questionOptions : step===1 ? task.rechnungOptions : task.answerOptions;
+  const stepHint = step===0 ? task.hintQuestion : step===1 ? task.hintRechnung : task.hintAnswer;
+  card.innerHTML = `
+    <div class="chapter-topic">${topics[topic].emoji} ${topics[topic].label} · Stufe ${level} (${levelLabel(level)})</div>
+    <div class="question-text" style="font-size:20px;">${task.scenario}</div>
+    <div class="question-sub">${stepLabels[step]}</div>
+    <div class="options-grid" id="optionsGrid"></div>
+    <div id="hintSlot"></div>
+  `;
+  wrap.appendChild(card);
+  const grid = card.querySelector("#optionsGrid");
+  stepOptions.forEach(opt=>{
+    const b = document.createElement("button");
+    b.className = "opt-btn";
+    b.textContent = opt.text;
+    b.onclick = ()=> handleSachaufgabeAnswer(opt.correct, b, wrap, stepHint);
+    grid.appendChild(b);
+  });
+}
+
+function handleSachaufgabeAnswer(isCorrect, btnEl, wrapEl, stepHint){
+  const grid = wrapEl.querySelector("#optionsGrid");
+  grid.querySelectorAll("button").forEach(b=> b.disabled = true);
+  if(isCorrect){
+    btnEl.classList.add("correct-flash");
+    if(view.subStep < 2){
+      setTimeout(()=>{ view.subStep++; render(); }, 500);
+    } else {
+      const firstTry = !view.attemptFailed;
+      awardTaskSuccess(firstTry, btnEl);
+    }
+  } else {
+    btnEl.classList.add("try-again");
+    registerTaskFailure();
+    showHint(wrapEl, stepHint);
+    setTimeout(()=>{
+      grid.querySelectorAll("button").forEach(b=>{ b.disabled=false; b.classList.remove("try-again"); });
+    }, 900);
+  }
 }
 
 function handleAnswer(isCorrect, btnEl, wrapEl){
-  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
-  const profile = curProfile();
-  const topic = view.currentTaskTopic;
-  const statObj = subjectProgress(profile,"mathe").stats[topic];
   const grid = wrapEl.querySelector("#optionsGrid");
   grid.querySelectorAll("button").forEach(b=> b.disabled = true);
 
   if(isCorrect){
     btnEl.classList.add("correct-flash");
     const firstTry = !view.attemptFailed;
-    if(firstTry){
-      statObj.correctStreak++; statObj.wrongStreak = 0;
-      statObj.correct++;
-      if(statObj.correctStreak>=3){ statObj.level = clampLevel(statObj.level+1); statObj.correctStreak=0; }
-    } else {
-      statObj.correct++;
-    }
-    const starsGained = firstTry ? 2 : 1;
-    profile.stars += starsGained;
-    view.chapterStars += starsGained;
-    saveState();
-    flyStars(btnEl, starsGained);
-    setTimeout(()=>{
-      view.taskIndex++;
-      view.currentTask = null;
-      render();
-    }, 650);
+    awardTaskSuccess(firstTry, btnEl);
   } else {
     btnEl.classList.add("try-again");
-    if(!view.attemptFailed){
-      view.attemptFailed = true;
-      statObj.wrong++;
-      statObj.wrongStreak++; statObj.correctStreak = 0;
-      if(statObj.wrongStreak>=2){ statObj.level = clampLevel(statObj.level-1); statObj.wrongStreak=0; }
-      saveState();
-    }
-    const hintSlot = wrapEl.querySelector("#hintSlot");
-    hintSlot.innerHTML = `
-      <div class="hint-bubble">
-        <span class="horse-emoji">${chapter.horse.emoji}</span>
-        <div><b>${chapter.horse.name} flüstert einen Tipp:</b>${view.currentTask.hint}<br><span class="small-muted">Versuch es gleich nochmal – du schaffst das! 💪</span></div>
-      </div>`;
+    registerTaskFailure();
+    showHint(wrapEl, view.currentTask.hint);
     setTimeout(()=>{
       grid.querySelectorAll("button").forEach(b=>{
         b.disabled = false;
@@ -1012,12 +2156,12 @@ function flyStars(fromEl, count){
 }
 
 function renderReward(){
-  const chapter = CHAPTERS.find(c=>c.id===view.chapterId);
+  const chapter = chaptersForSubject(currentSubject).find(c=>c.id===view.chapterId);
   const profile = curProfile();
-  const alreadyDone = !!subjectProgress(profile,"mathe").chapterProgress[chapter.id];
+  const alreadyDone = !!subjectProgress(profile,currentSubject).chapterProgress[chapter.id];
   if(!alreadyDone){
-    subjectProgress(profile,"mathe").chapterProgress[chapter.id] = true;
-    profile.horses.push({id:"horse_"+chapter.id, name:chapter.horse.name, color:chapter.horse.color, emoji:chapter.horse.emoji, hue:chapter.horse.hue, ability:chapter.horse.ability});
+    subjectProgress(profile,currentSubject).chapterProgress[chapter.id] = true;
+    profile.horses.push({id:"horse_"+currentSubject+"_"+chapter.id, name:chapter.horse.name, color:chapter.horse.color, emoji:chapter.horse.emoji, hue:chapter.horse.hue, ability:chapter.horse.ability});
     saveState();
   }
   topBar(state.currentProfile);
@@ -1061,9 +2205,10 @@ function renderStall(){
   topBar(state.currentProfile);
   const wrap = document.createElement("div");
   wrap.className = "center-wrap";
+  const totalHorses = SUBJECT_KEYS.reduce((sum,k)=> sum + chaptersForSubject(k).length, 0);
   wrap.innerHTML = `
     <h1>🏠 Dein Stall</h1>
-    <p>${profile.horses.length} von ${CHAPTERS.length} Pferden befreit</p>
+    <p>${profile.horses.length} von ${totalHorses} Pferden befreit</p>
     <div class="stall-grid" id="stallGrid"></div>
     <div class="footer-nav"><button class="btn secondary" id="backHome">🗺️ Zu den Kapiteln</button></div>
   `;
@@ -1191,7 +2336,6 @@ function renderParentDash(){
 
 function drawDash(modal){
   const profile = state.profiles[parentDashTab];
-  const mathe = subjectProgress(profile,"mathe");
   const totalToday = profile.timeLog[todayStr()] || 0;
   const last7 = [];
   for(let i=6;i>=0;i--){
@@ -1227,17 +2371,23 @@ function drawDash(modal){
       </select>
     </div>
     <p class="small-muted">Aktuell gibt es nur für Klasse 3 fertige Inhalte. Weitere Klassenstufen folgen.</p>
-    <h2 style="font-size:19px; margin-top:16px;">🐴 Koppel (Mathe): Themen &amp; Fortschritt</h2>
-    ${TOPIC_KEYS.map(k=>{
-      const s = mathe.stats[k];
-      const total = s.correct+s.wrong;
-      const errRate = total>0 ? Math.round((s.wrong/total)*100) : 0;
+    ${SUBJECT_KEYS.map(subjectKey=>{
+      const sp = subjectProgress(profile, subjectKey);
+      const s = SUBJECTS[subjectKey];
       return `
-      <div class="stat-row">
-        <div><b>${TOPIC_META[k].emoji} ${TOPIC_META[k].label}</b><br>
-        <span class="pill">Stufe ${s.level}/5</span> <span class="pill">✅ ${s.correct}</span> <span class="pill">❌ ${s.wrong}</span> <span class="pill">Fehlerquote ${errRate}%</span></div>
-        <div class="toggle ${mathe.topicsEnabled[k]?"on":""}" data-toggle="${k}"><div class="knob"></div></div>
-      </div>`;
+      <h2 style="font-size:19px; margin-top:16px;">${s.icon} ${s.label} (${s.subtitle}): Themen &amp; Fortschritt</h2>
+      ${topicKeysForSubject(subjectKey).map(k=>{
+        const st = sp.stats[k];
+        const total = st.correct+st.wrong;
+        const errRate = total>0 ? Math.round((st.wrong/total)*100) : 0;
+        const meta = topicsForSubject(subjectKey)[k];
+        return `
+        <div class="stat-row">
+          <div><b>${meta.emoji} ${meta.label}</b><br>
+          <span class="pill">Stufe ${st.level}/5 (${levelLabel(st.level)})</span> <span class="pill">✅ ${st.correct}</span> <span class="pill">❌ ${st.wrong}</span> <span class="pill">Fehlerquote ${errRate}%</span></div>
+          <div class="toggle ${sp.topicsEnabled[k]?"on":""}" data-toggle-subject="${subjectKey}" data-toggle="${k}"><div class="knob"></div></div>
+        </div>`;
+      }).join("")}`;
     }).join("")}
     <h2 style="font-size:19px; margin-top:16px;">Übungszeit (heute: ${totalToday} Min.)</h2>
     <div class="stat-row" style="flex-direction:column; align-items:stretch;">
@@ -1251,6 +2401,7 @@ function drawDash(modal){
     <div class="footer-nav">
       <button class="btn" id="closeDash">Fertig</button>
     </div>
+    <p class="small-muted" style="text-align:center; margin-top:12px;">Version ${APP_VERSION}</p>
   `;
   modal.querySelectorAll("[data-tab]").forEach(t=>{
     t.onclick = ()=>{ parentDashTab = t.dataset.tab; drawDash(modal); };
@@ -1258,7 +2409,9 @@ function drawDash(modal){
   modal.querySelectorAll("[data-toggle]").forEach(t=>{
     t.onclick = ()=>{
       const k = t.dataset.toggle;
-      mathe.topicsEnabled[k] = !mathe.topicsEnabled[k];
+      const subjectKey = t.dataset.toggleSubject;
+      const sp = subjectProgress(profile, subjectKey);
+      sp.topicsEnabled[k] = !sp.topicsEnabled[k];
       saveState();
       drawDash(modal);
     };
@@ -1304,8 +2457,64 @@ function drawDash(modal){
   };
 }
 
+// ---------- Update-Mechanismus ----------
+
+function showUpdateBanner(){
+  const banner = document.getElementById("updateBanner");
+  if(!banner || banner.classList.contains("show")) return;
+  banner.innerHTML = `
+    <span>✨ Neue Magie verfügbar!</span>
+    <button id="updateBtn">Aktualisieren</button>
+  `;
+  banner.classList.add("show");
+  banner.querySelector("#updateBtn").onclick = performUpdate;
+}
+
+function performUpdate(){
+  const btn = document.getElementById("updateBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "Aktualisiere …"; }
+  if(!("serviceWorker" in navigator)){ location.reload(); return; }
+  navigator.serviceWorker.getRegistration().then(reg=>{
+    if(!reg){ location.reload(); return; }
+    const tellWaitingToActivate = ()=>{
+      if(reg.waiting) reg.waiting.postMessage({type:"SKIP_WAITING"});
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", ()=> location.reload());
+    if(reg.waiting){
+      tellWaitingToActivate();
+    } else {
+      reg.update().then(()=>{
+        if(reg.waiting) tellWaitingToActivate();
+        else if(reg.installing){
+          reg.installing.addEventListener("statechange", function(){
+            if(this.state==="installed") tellWaitingToActivate();
+          });
+        }
+      }).catch(()=>{});
+    }
+    setTimeout(()=> location.reload(), 4000);
+  }).catch(()=> location.reload());
+}
+
+function checkForUpdate(){
+  if(!navigator.onLine) return;
+  fetch("./version.json?_=" + Date.now(), {cache:"no-store"})
+    .then(res => res.ok ? res.json() : null)
+    .then(data => {
+      if(data && data.version && data.version !== APP_VERSION) showUpdateBanner();
+    })
+    .catch(()=>{});
+}
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  });
+}
+
 initSky();
 render();
+checkForUpdate();
 
 window.addEventListener("beforeunload", ()=>{
   if(state.currentProfile) logTime(state.currentProfile);
