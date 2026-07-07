@@ -195,10 +195,27 @@
   }
   input[type="number"], input[type="text"], select{font-size:20px; padding:12px; border-radius:12px; border:2px solid #ccc; width:100%; background:#fff; color:var(--ink);}
   .small-muted{font-size:13px; opacity:.75;}
+
+  .update-banner{
+    position:fixed; top:0; left:0; right:0; z-index:300;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    background:linear-gradient(90deg, var(--bg2), var(--bg3));
+    color:#fff; padding:12px 18px; font-size:15px; font-weight:700;
+    box-shadow:0 4px 16px rgba(0,0,0,.4);
+    transform:translateY(-100%); transition:transform .4s ease;
+    flex-wrap:wrap; text-align:center;
+  }
+  .update-banner.show{ transform:translateY(0); }
+  .update-banner button{
+    background:var(--gold); color:var(--ink); font-weight:800; border:none; border-radius:14px;
+    padding:8px 18px; font-size:14px; min-height:auto; box-shadow:none;
+  }
+  .update-banner button:disabled{ opacity:.6; }
 </style>
 </head>
 <body>
 <div class="sky" id="sky"></div>
+<div class="update-banner" id="updateBanner"></div>
 <div id="app"></div>
 <div class="portrait-hint">
   <div style="font-size:60px;">📱↔️</div>
@@ -209,6 +226,10 @@
 <script>
 (function(){
 "use strict";
+
+// WICHTIG: Bei jeder Code-Änderung sowohl hier als auch in version.json
+// und in sw.js (APP_VERSION/CACHE_NAME) die Versionsnummer erhöhen.
+const APP_VERSION = "1.0.0";
 
 const STORAGE_KEY = "magischesGestuetV1";
 const PROFILE_SLOTS = ["child1","child2","child3"];
@@ -2380,6 +2401,7 @@ function drawDash(modal){
     <div class="footer-nav">
       <button class="btn" id="closeDash">Fertig</button>
     </div>
+    <p class="small-muted" style="text-align:center; margin-top:12px;">Version ${APP_VERSION}</p>
   `;
   modal.querySelectorAll("[data-tab]").forEach(t=>{
     t.onclick = ()=>{ parentDashTab = t.dataset.tab; drawDash(modal); };
@@ -2435,8 +2457,64 @@ function drawDash(modal){
   };
 }
 
+// ---------- Update-Mechanismus ----------
+
+function showUpdateBanner(){
+  const banner = document.getElementById("updateBanner");
+  if(!banner || banner.classList.contains("show")) return;
+  banner.innerHTML = `
+    <span>✨ Neue Magie verfügbar!</span>
+    <button id="updateBtn">Aktualisieren</button>
+  `;
+  banner.classList.add("show");
+  banner.querySelector("#updateBtn").onclick = performUpdate;
+}
+
+function performUpdate(){
+  const btn = document.getElementById("updateBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "Aktualisiere …"; }
+  if(!("serviceWorker" in navigator)){ location.reload(); return; }
+  navigator.serviceWorker.getRegistration().then(reg=>{
+    if(!reg){ location.reload(); return; }
+    const tellWaitingToActivate = ()=>{
+      if(reg.waiting) reg.waiting.postMessage({type:"SKIP_WAITING"});
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", ()=> location.reload());
+    if(reg.waiting){
+      tellWaitingToActivate();
+    } else {
+      reg.update().then(()=>{
+        if(reg.waiting) tellWaitingToActivate();
+        else if(reg.installing){
+          reg.installing.addEventListener("statechange", function(){
+            if(this.state==="installed") tellWaitingToActivate();
+          });
+        }
+      }).catch(()=>{});
+    }
+    setTimeout(()=> location.reload(), 4000);
+  }).catch(()=> location.reload());
+}
+
+function checkForUpdate(){
+  if(!navigator.onLine) return;
+  fetch("./version.json?_=" + Date.now(), {cache:"no-store"})
+    .then(res => res.ok ? res.json() : null)
+    .then(data => {
+      if(data && data.version && data.version !== APP_VERSION) showUpdateBanner();
+    })
+    .catch(()=>{});
+}
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  });
+}
+
 initSky();
 render();
+checkForUpdate();
 
 window.addEventListener("beforeunload", ()=>{
   if(state.currentProfile) logTime(state.currentProfile);
