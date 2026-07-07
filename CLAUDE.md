@@ -77,6 +77,11 @@ wenn echte Inhalte dafür existieren (`GRADE_HAS_CONTENT`).
   per dynamischem `import()` nachgeladen
 - `js/horse3d.js` – Low-Poly-Pferd aus Grundformen mit Toon-Shading und
   Idle-Animationen
+- `js/story-data.js` – Story "Der erloschene Sternenstall" (10 Kapitel,
+  `window.STORY_CHAPTERS`/`window.STORY_PROLOG`); Freischalt-Logik:
+  3× "Sehr gut" (≥90 % im ersten Versuch, 10 Aufgaben/Runde) öffnet das
+  nächste Kapitel; Story-Fortschritt pro Profil unter `profile.story`
+  (`chapterStars`, `subjects`, `unlocked` für Gebiete/Aktivitäten/Ausrüstung)
 - Kein WebGL oder CDN nicht erreichbar → automatischer Fallback auf die
   2D-Fachwahl (`subjectMap`); alle Lerninhalte funktionieren ohne 3D
 - `sw.js` – Service Worker: Offline-Cache, Update-Flow (SKIP_WAITING)
