@@ -1,6 +1,6 @@
 // WICHTIG: Bei jeder Code-Änderung an index.html sowohl hier APP_VERSION
 // als auch die Versionsnummer in version.json erhöhen (gleicher Wert!).
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.1";
 const CACHE_NAME = "magisches-gestuet-v" + APP_VERSION;
 const CORE_ASSETS = ["./", "./index.html"];
 
