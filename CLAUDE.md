@@ -71,7 +71,14 @@ wenn echte Inhalte dafür existieren (`GRADE_HAS_CONTENT`).
 
 ## Architektur-Kurzüberblick
 
-- `index.html` – komplette App (UI, State, Aufgaben-Generatoren)
+- `index.html` – 2D-App (UI, State, Aufgaben-Generatoren) + Integration des 3D-Hubs
+- `js/stall3d.js` – 3D-Stall-Szene (Haupt-Hub): Raum, Licht, Partikel, Kamera-
+  Steuerung, Navigations-Symbole; Three.js per CDN (cdn.jsdelivr.net), wird
+  per dynamischem `import()` nachgeladen
+- `js/horse3d.js` – Low-Poly-Pferd aus Grundformen mit Toon-Shading und
+  Idle-Animationen
+- Kein WebGL oder CDN nicht erreichbar → automatischer Fallback auf die
+  2D-Fachwahl (`subjectMap`); alle Lerninhalte funktionieren ohne 3D
 - `sw.js` – Service Worker: Offline-Cache, Update-Flow (SKIP_WAITING)
 - `version.json` – einzige Quelle der Server-Versionsnummer, nie gecacht
 - State: `localStorage` unter `magischesGestuetV1`, 3 Profil-Slots

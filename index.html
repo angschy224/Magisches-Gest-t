@@ -229,7 +229,7 @@
 
 // WICHTIG: Bei jeder Code-Änderung sowohl hier als auch in version.json
 // und in sw.js (APP_VERSION/CACHE_NAME) die Versionsnummer erhöhen.
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.1.0";
 
 const STORAGE_KEY = "magischesGestuetV1";
 const PROFILE_SLOTS = ["child1","child2","child3"];
@@ -428,7 +428,7 @@ function defaultProfile(slotIndex){
 function defaultState(){
   const profiles = {};
   PROFILE_SLOTS.forEach((slot,i)=> profiles[slot]=defaultProfile(i));
-  return { profiles, settings:{pin:"2412"}, currentProfile:null, schemaVersion:2 };
+  return { profiles, settings:{pin:"2412", soundOn:true}, currentProfile:null, schemaVersion:2 };
 }
 
 function subjectProgress(profile, subjectKey){ return profile.subjects[subjectKey]; }
@@ -461,6 +461,7 @@ function migrateLegacyState(parsed){
     fresh.profiles[slot] = np;
   });
   if(parsed.settings && parsed.settings.pin) fresh.settings.pin = parsed.settings.pin;
+  if(parsed.settings && typeof parsed.settings.soundOn === "boolean") fresh.settings.soundOn = parsed.settings.soundOn;
   return fresh;
 }
 
@@ -489,6 +490,7 @@ function loadState(){
       }
     });
     if(parsed.settings && parsed.settings.pin) fresh.settings.pin = parsed.settings.pin;
+    if(parsed.settings && typeof parsed.settings.soundOn === "boolean") fresh.settings.soundOn = parsed.settings.soundOn;
     return fresh;
   }catch(e){ return defaultState(); }
 }
@@ -514,10 +516,28 @@ function logTime(profileName){
   saveState();
 }
 
+let stall3dHandle = null;
+
 function goto(v){
   if(view.name==="task" && v.name!=="task") logTime(state.currentProfile);
+  if(stall3dHandle && v.name!=="stall3d"){
+    try{ stall3dHandle.destroy(); }catch(e){}
+    stall3dHandle = null;
+  }
   view = v;
   render();
+}
+
+function webglAvailable(){
+  try{
+    const c = document.createElement("canvas");
+    return !!(window.WebGLRenderingContext && (c.getContext("webgl") || c.getContext("experimental-webgl")));
+  }catch(e){ return false; }
+}
+
+// Haupt-Hub: 3D-Stall wenn möglich, sonst 2D-Fachwahl als Fallback.
+function gotoHub(){
+  goto(webglAvailable() ? {name:"stall3d"} : {name:"subjectMap"});
 }
 
 function initSky(){
@@ -561,6 +581,7 @@ function render(){
   if(view.name==="profileSelect") return renderProfileSelect();
   if(view.name==="nameSetup") return renderNameSetup();
   if(view.name==="subjectMap") return renderSubjectMap();
+  if(view.name==="stall3d") return renderStall3d();
   if(view.name==="comingSoon") return renderComingSoon();
   if(view.name==="home") return renderHome();
   if(view.name==="chapterIntro") return renderChapterIntro();
@@ -620,7 +641,7 @@ function renderProfileSelect(){
       sessionTimerStart = Date.now();
       saveState();
       const profile = curProfile();
-      goto(profile.name ? {name:"subjectMap"} : {name:"nameSetup"});
+      if(profile.name) gotoHub(); else goto({name:"nameSetup"});
     };
   });
   wrap.querySelector("#parentBtn").onclick = ()=>{ returnView = {name:"profileSelect"}; goto({name:"parentPin"}); };
@@ -652,7 +673,7 @@ function renderNameSetup(){
     const profile = curProfile();
     profile.name = val;
     saveState();
-    goto({name:"subjectMap"});
+    gotoHub();
   }
   submitBtn.onclick = submit;
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") submit(); });
@@ -712,6 +733,64 @@ function renderComingSoon(){
   wrap.querySelector("#backMap").onclick = ()=> goto({name:"subjectMap"});
 }
 
+// 3D-Stall als Haupt-Hub (Three.js-Module werden erst hier nachgeladen).
+function renderStall3d(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "flex:1; display:flex; flex-direction:column; min-height:0; padding:0 16px;";
+  wrap.innerHTML = `
+    <div id="scene3d" style="flex:1; min-height:320px; position:relative; touch-action:none; border-radius:22px; overflow:hidden; background:rgba(255,255,255,.05);">
+      <div id="scene3dLoading" class="center-wrap" style="position:absolute; inset:0;">
+        <div class="horse-emoji small gallop">🐴</div>
+        <p>✨ Der Stall wird vorbereitet …</p>
+      </div>
+      <div class="small-muted" id="scene3dHint" style="display:none; position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:5; background:rgba(10,4,30,.55); padding:6px 16px; border-radius:14px; white-space:nowrap;">
+        Hallo, ${displayName(profile, state.currentProfile)}! Tippe dein Pferd oder ein Symbol an ✨
+      </div>
+    </div>
+    <div class="footer-nav" style="padding:12px;">
+      <button class="btn secondary" id="toHorses">🐴 Meine Pferde</button>
+      <button class="btn ghost" id="soundToggle">${state.settings.soundOn?"🔊 Ton an":"🔇 Ton aus"}</button>
+      <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  wrap.querySelector("#toHorses").onclick = ()=> goto({name:"stall"});
+  wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
+  const soundBtn = wrap.querySelector("#soundToggle");
+  soundBtn.onclick = ()=>{
+    state.settings.soundOn = !state.settings.soundOn;
+    saveState();
+    soundBtn.textContent = state.settings.soundOn ? "🔊 Ton an" : "🔇 Ton aus";
+  };
+
+  const container = wrap.querySelector("#scene3d");
+  import("./js/stall3d.js").then(mod=>{
+    if(view.name!=="stall3d") return;
+    const handle = mod.initStall3d({
+      container,
+      soundOn: ()=> state.settings.soundOn,
+      onNavigate: (subjectKey)=>{ currentSubject = subjectKey; goto({name:"home"}); },
+      onParent: ()=>{
+        returnView = {name:"stall3d"};
+        if(state.currentProfile) logTime(state.currentProfile);
+        sessionTimerStart = null;
+        goto({name:"parentPin"});
+      }
+    });
+    if(view.name!=="stall3d"){ handle.destroy(); return; }
+    stall3dHandle = handle;
+    const loading = wrap.querySelector("#scene3dLoading");
+    if(loading) loading.remove();
+    const hint = wrap.querySelector("#scene3dHint");
+    if(hint) hint.style.display = "block";
+  }).catch(()=>{
+    // CDN nicht erreichbar (z.B. offline beim allerersten Start) → 2D-Fallback
+    if(view.name==="stall3d") goto({name:"subjectMap"});
+  });
+}
+
 function chapterUnlocked(chapters, idx, profile, subjectKey){
   if(idx===0) return true;
   const prev = chapters[idx-1];
@@ -735,8 +814,8 @@ function renderHome(){
     <p>${SUBJECTS[currentSubject].icon} ${SUBJECTS[currentSubject].label}: ${doneCount} von ${chapters.length} Kapiteln geschafft. Wähle dein nächstes Abenteuer:</p>
     <div class="chapter-grid" id="chapterGrid"></div>
     <div class="footer-nav">
-      <button class="btn secondary" id="toStall">🏠 Zum Stall</button>
-      <button class="btn ghost" id="toSubjectMap">🏰 Andere Fächer</button>
+      <button class="btn secondary" id="toStall">🐴 Meine Pferde</button>
+      <button class="btn ghost" id="toSubjectMap">🏠 Zurück zum Stall</button>
       <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
     </div>
   `;
@@ -767,7 +846,7 @@ function renderHome(){
     };
   });
   wrap.querySelector("#toStall").onclick = ()=> goto({name:"stall"});
-  wrap.querySelector("#toSubjectMap").onclick = ()=> goto({name:"subjectMap"});
+  wrap.querySelector("#toSubjectMap").onclick = ()=> gotoHub();
   wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
 }
 

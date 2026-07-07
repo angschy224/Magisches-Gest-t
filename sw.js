@@ -1,8 +1,8 @@
 // WICHTIG: Bei jeder Code-Änderung an index.html sowohl hier APP_VERSION
 // als auch die Versionsnummer in version.json erhöhen (gleicher Wert!).
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.1.0";
 const CACHE_NAME = "magisches-gestuet-v" + APP_VERSION;
-const CORE_ASSETS = ["./", "./index.html"];
+const CORE_ASSETS = ["./", "./index.html", "./js/stall3d.js", "./js/horse3d.js"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
