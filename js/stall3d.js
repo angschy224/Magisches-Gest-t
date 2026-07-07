@@ -2,6 +2,7 @@
 // Fallback bei fehlendem WebGL übernimmt index.html (2D-Übersicht).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { buildHorse, makeGradientMap } from "./horse3d.js";
+import { buildAvatar } from "./avatar3d.js";
 
 const NAV_ICONS = [
   { id:"mathe",   emoji:"🐴", label:"Koppel",        pos:[-2.15, 2.75, -2.0] },
@@ -89,7 +90,7 @@ function playSnort(){
 }
 
 export function initStall3d(opts){
-  const { container, onNavigate, onParent, soundOn } = opts;
+  const { container, onNavigate, onParent, onMirror, soundOn, avatarConfig } = opts;
   const rectOf = ()=>{
     const r = container.getBoundingClientRect();
     return { w: Math.max(r.width, 200), h: Math.max(r.height, 200) };
@@ -184,6 +185,38 @@ export function initStall3d(opts){
   horse.group.position.set(0, 0, -0.4);
   horse.group.rotation.y = 0.45;
   scene.add(horse.group);
+
+  // ---- Avatar des Kindes (steht neben dem Pferd) ----
+  let avatar = null;
+  if(avatarConfig){
+    avatar = buildAvatar(avatarConfig, gm);
+    avatar.group.position.set(1.5, 0, 0.5);
+    avatar.group.rotation.y = -0.5;
+    scene.add(avatar.group);
+  }
+
+  // ---- Zauberspiegel (öffnet die Avatar-Erstellung) ----
+  const mirrorGroup = new THREE.Group();
+  const mirrorFrame = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.07, 10, 24), toon(0xc9a24e, gm));
+  mirrorFrame.scale.set(1, 1.25, 1);
+  const mirrorGlass = new THREE.Mesh(
+    new THREE.CircleGeometry(0.48, 24),
+    new THREE.MeshBasicMaterial({ color: 0xbcd6f5 })
+  );
+  mirrorGlass.scale.set(1, 1.25, 1);
+  mirrorGlass.position.z = 0.02;
+  const mirrorStar = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({color:0xffd76a}));
+  mirrorStar.position.set(0, 0.72, 0.05);
+  const mirrorFootL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.75, 8), toon(0x8a6a34, gm));
+  mirrorFootL.position.set(-0.25, -0.85, -0.06);
+  mirrorFootL.rotation.z = 0.18;
+  const mirrorFootR = mirrorFootL.clone();
+  mirrorFootR.position.x = 0.25;
+  mirrorFootR.rotation.z = -0.18;
+  mirrorGroup.add(mirrorFrame, mirrorGlass, mirrorStar, mirrorFootL, mirrorFootR);
+  mirrorGroup.position.set(2.95, 1.15, 1.9);
+  mirrorGroup.rotation.y = -0.95;
+  scene.add(mirrorGroup);
 
   // ---- Schwebende Navigations-Symbole ----
   const iconSprites = [];
@@ -295,6 +328,10 @@ export function initStall3d(opts){
       if(id === "parent") onParent(); else onNavigate(id);
       return;
     }
+    if(onMirror && raycaster.intersectObject(mirrorGroup, true).length){
+      onMirror();
+      return;
+    }
     if(raycaster.intersectObject(horse.group, true).length){
       const headPos = horse.poke();
       spawnHearts(headPos);
@@ -326,6 +363,8 @@ export function initStall3d(opts){
     prevT = now;
 
     horse.tick(t, dt, camera);
+    if(avatar) avatar.tick(t, dt);
+    mirrorGlass.material.color.setHSL(0.6, 0.55, 0.8 + Math.sin(t * 1.8) * 0.06);
     lantern.intensity = 55 + Math.sin(t * 7.3) * 3 + Math.sin(t * 13.1) * 2;
     lampGlow.material.color.setHSL(0.09, 1, 0.72 + Math.sin(t * 7.3) * 0.03);
 

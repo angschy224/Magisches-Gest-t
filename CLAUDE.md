@@ -77,6 +77,12 @@ wenn echte Inhalte dafür existieren (`GRADE_HAS_CONTENT`).
   per dynamischem `import()` nachgeladen
 - `js/horse3d.js` – Low-Poly-Pferd aus Grundformen mit Toon-Shading und
   Idle-Animationen
+- `js/avatar-data.js` – Avatar-Optionskatalog (`window.AVATAR_OPTIONS`,
+  `window.AVATAR_DEFAULT`); klassisches Script wie story-data.js
+- `js/avatar3d.js` – Cartoon-Kinderfigur im Toon-Look (buildAvatar),
+  Editor-Vorschau (initAvatarPreview) und Portrait-Renderer
+  (renderAvatarPortrait → PNG-DataURL in `profile.avatarImage` für
+  2D-Ansichten); Avatar-Konfiguration liegt in `profile.avatar`
 - `js/story-data.js` – Story "Der erloschene Sternenstall" (10 Kapitel,
   `window.STORY_CHAPTERS`/`window.STORY_PROLOG`); Freischalt-Logik:
   3× "Sehr gut" (≥90 % im ersten Versuch, 10 Aufgaben/Runde) öffnet das
