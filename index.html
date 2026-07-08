@@ -196,6 +196,37 @@
   input[type="number"], input[type="text"], select{font-size:20px; padding:12px; border-radius:12px; border:2px solid #ccc; width:100%; background:#fff; color:var(--ink);}
   .small-muted{font-size:13px; opacity:.75;}
 
+  .story-star{font-size:32px; filter:grayscale(1); opacity:.3; transition:all .3s;}
+  .story-star.filled{filter:none; opacity:1;}
+  .story-star.earned{animation:starPop .9s ease;}
+  @keyframes starPop{
+    0%{transform:scale(0.2) rotate(-30deg); filter:grayscale(1);}
+    60%{transform:scale(1.6) rotate(10deg); filter:none;}
+    100%{transform:scale(1) rotate(0);}
+  }
+  .chip{
+    display:inline-flex; align-items:center; gap:8px; padding:12px 20px; border-radius:18px;
+    background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.3); font-weight:700; font-size:18px;
+    cursor:pointer; user-select:none;
+  }
+  .chip.on{background:var(--gold); color:var(--ink); border-color:var(--gold-dark);}
+  .chip.disabled{opacity:.35; pointer-events:none;}
+
+  .swatch-lg{
+    width:52px; height:52px; border-radius:50%; border:3px solid rgba(255,255,255,.4);
+    cursor:pointer; flex-shrink:0;
+  }
+  .swatch-lg.selected{outline:4px solid var(--gold); outline-offset:3px;}
+  .avatar-row{display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center;}
+  .avatar-cat{margin-bottom:16px;}
+  .avatar-cat h3{font-size:17px; margin:0 0 8px; text-align:center;}
+  .avatar-portrait{
+    width:84px; height:84px; border-radius:50%; border:3px solid var(--gold);
+    background:rgba(255,255,255,.12); object-fit:cover;
+  }
+  .lantern-icon{font-size:40px; transition:filter .3s;}
+  .lantern-icon.dark{filter:grayscale(1) brightness(.55);}
+
   .update-banner{
     position:fixed; top:0; left:0; right:0; z-index:300;
     display:flex; align-items:center; justify-content:center; gap:14px;
@@ -223,13 +254,15 @@
   <p>Das magische Gestüt sieht im Querformat am schönsten aus.</p>
 </div>
 
+<script src="./js/story-data.js"></script>
+<script src="./js/avatar-data.js"></script>
 <script>
 (function(){
 "use strict";
 
 // WICHTIG: Bei jeder Code-Änderung sowohl hier als auch in version.json
 // und in sw.js (APP_VERSION/CACHE_NAME) die Versionsnummer erhöhen.
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.3.0";
 
 const STORAGE_KEY = "magischesGestuetV1";
 const PROFILE_SLOTS = ["child1","child2","child3"];
@@ -408,6 +441,13 @@ function defaultSubjectProgress(subjectKey){
   topicKeysForSubject(subjectKey).forEach(k=> topicsEnabled[k]=true);
   return {chapterProgress:{}, stats, topicsEnabled};
 }
+function defaultStoryProgress(){
+  return {
+    chapterStars:{},            // {kapitelId: 0..3} – drei goldene Sterne pro Kapitel
+    subjects:{mathe:true, deutsch:true, hsu:true}, // vom Kind gewählte Fächer für Story-Runden
+    unlocked:[]                 // freigeschaltete Gebiete/Aktivitäten/Ausrüstung (IDs)
+  };
+}
 function defaultProfile(slotIndex){
   return {
     name:null,
@@ -418,6 +458,9 @@ function defaultProfile(slotIndex){
     ownedAccessories:[],
     horseEquip:{},
     timeLog:{},
+    avatar:null,       // Avatar-Konfiguration (null = noch nicht erstellt)
+    avatarImage:null,  // Portrait als DataURL für 2D-Ansichten
+    story: defaultStoryProgress(),
     subjects:{
       mathe: defaultSubjectProgress("mathe"),
       deutsch: defaultSubjectProgress("deutsch"),
@@ -486,6 +529,10 @@ function loadState(){
           });
           merged.subjects[subjectKey].topicsEnabled = Object.assign({}, defaultSubjectProgress(subjectKey).topicsEnabled, merged.subjects[subjectKey].topicsEnabled||{});
         });
+        merged.story = Object.assign(defaultStoryProgress(), merged.story||{});
+        merged.story.subjects = Object.assign({mathe:true, deutsch:true, hsu:true}, merged.story.subjects||{});
+        merged.story.chapterStars = merged.story.chapterStars || {};
+        merged.story.unlocked = merged.story.unlocked || [];
         fresh.profiles[slot] = merged;
       }
     });
@@ -517,12 +564,17 @@ function logTime(profileName){
 }
 
 let stall3dHandle = null;
+let avatarPreviewHandle = null;
 
 function goto(v){
   if(view.name==="task" && v.name!=="task") logTime(state.currentProfile);
   if(stall3dHandle && v.name!=="stall3d"){
     try{ stall3dHandle.destroy(); }catch(e){}
     stall3dHandle = null;
+  }
+  if(avatarPreviewHandle && v.name!=="avatarEditor"){
+    try{ avatarPreviewHandle.destroy(); }catch(e){}
+    avatarPreviewHandle = null;
   }
   view = v;
   render();
@@ -582,6 +634,10 @@ function render(){
   if(view.name==="nameSetup") return renderNameSetup();
   if(view.name==="subjectMap") return renderSubjectMap();
   if(view.name==="stall3d") return renderStall3d();
+  if(view.name==="story") return renderStoryHub();
+  if(view.name==="storyIntro") return renderStoryIntro();
+  if(view.name==="storyReward") return renderStoryReward();
+  if(view.name==="avatarEditor") return renderAvatarEditor();
   if(view.name==="comingSoon") return renderComingSoon();
   if(view.name==="home") return renderHome();
   if(view.name==="chapterIntro") return renderChapterIntro();
@@ -625,7 +681,7 @@ function renderProfileSelect(){
           const idx = PROFILE_SLOTS.indexOf(slot);
           return `
           <div class="profile-card">
-            <div class="emoji">${PROFILE_AVATARS[idx]}</div>
+            ${p.avatarImage ? avatarPortraitHtml(p, 84) : `<div class="emoji">${PROFILE_AVATARS[idx]}</div>`}
             <div style="font-size:22px; font-weight:800;">${displayName(p, slot)}</div>
             <button class="btn" data-profile="${slot}">Los geht's!</button>
           </div>`;
@@ -673,7 +729,8 @@ function renderNameSetup(){
     const profile = curProfile();
     profile.name = val;
     saveState();
-    gotoHub();
+    // Beim ersten Start: direkt zur Avatar-Erstellung, danach in den Stall
+    goto({name:"avatarEditor", returnTo:"hub", firstTime:true});
   }
   submitBtn.onclick = submit;
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") submit(); });
@@ -688,12 +745,16 @@ function renderSubjectMap(){
   wrap.innerHTML = `
     <h1>Hallo, ${displayName(profile, state.currentProfile)}! 🌟</h1>
     <p>Was möchtest du heute im Gestüt entdecken?</p>
+    <div style="margin-bottom:6px;"><button class="btn" id="toStory2d">🏮 Sternenlaternen – die große Geschichte</button></div>
     <div class="profile-grid" id="subjectGrid"></div>
     <div class="footer-nav">
+      <button class="btn ghost" id="toAvatar2d">🪞 Mein Avatar</button>
       <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
     </div>
   `;
   app.appendChild(wrap);
+  wrap.querySelector("#toStory2d").onclick = ()=> goto({name:"story"});
+  wrap.querySelector("#toAvatar2d").onclick = ()=> goto({name:"avatarEditor", returnTo:"hub"});
   const grid = wrap.querySelector("#subjectGrid");
   SUBJECT_KEYS.forEach(key=>{
     const s = SUBJECTS[key];
@@ -746,16 +807,18 @@ function renderStall3d(){
         <p>✨ Der Stall wird vorbereitet …</p>
       </div>
       <div class="small-muted" id="scene3dHint" style="display:none; position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:5; background:rgba(10,4,30,.55); padding:6px 16px; border-radius:14px; white-space:nowrap;">
-        Hallo, ${displayName(profile, state.currentProfile)}! Tippe dein Pferd oder ein Symbol an ✨
+        Hallo, ${displayName(profile, state.currentProfile)}! Tippe dein Pferd, den Spiegel oder ein Symbol an ✨
       </div>
     </div>
     <div class="footer-nav" style="padding:12px;">
+      <button class="btn" id="toStory">🏮 Sternenlaternen</button>
       <button class="btn secondary" id="toHorses">🐴 Meine Pferde</button>
       <button class="btn ghost" id="soundToggle">${state.settings.soundOn?"🔊 Ton an":"🔇 Ton aus"}</button>
       <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
     </div>
   `;
   app.appendChild(wrap);
+  wrap.querySelector("#toStory").onclick = ()=> goto({name:"story"});
   wrap.querySelector("#toHorses").onclick = ()=> goto({name:"stall"});
   wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
   const soundBtn = wrap.querySelector("#soundToggle");
@@ -770,8 +833,10 @@ function renderStall3d(){
     if(view.name!=="stall3d") return;
     const handle = mod.initStall3d({
       container,
+      avatarConfig: profile.avatar,
       soundOn: ()=> state.settings.soundOn,
       onNavigate: (subjectKey)=>{ currentSubject = subjectKey; goto({name:"home"}); },
+      onMirror: ()=> goto({name:"avatarEditor", returnTo:"stall3d"}),
       onParent: ()=>{
         returnView = {name:"stall3d"};
         if(state.currentProfile) logTime(state.currentProfile);
@@ -789,6 +854,335 @@ function renderStall3d(){
     // CDN nicht erreichbar (z.B. offline beim allerersten Start) → 2D-Fallback
     if(view.name==="stall3d") goto({name:"subjectMap"});
   });
+}
+
+// ---------- Story: "Der erloschene Sternenstall" ----------
+
+const STORY_TASKS_PER_ROUND = 10;
+const STORY_SEHR_GUT_QUOTE = 0.9;
+const STORY_HORSE = {name:"Funkelstern", emoji:"🐴"};
+
+function storyStars(profile, chapterId){ return profile.story.chapterStars[chapterId] || 0; }
+function storyChapterOpen(profile, idx){
+  if(idx===0) return true;
+  return storyStars(profile, STORY_CHAPTERS[idx-1].id) >= 3;
+}
+function storyStarsRow(count, earnedIdx){
+  let html = "";
+  for(let i=0;i<3;i++){
+    const cls = "story-star" + (i<count?" filled":"") + (i===earnedIdx?" earned":"");
+    html += `<span class="${cls}">⭐</span>`;
+  }
+  return `<span style="display:inline-flex; gap:6px;">${html}</span>`;
+}
+
+// Fächer, die für Story-Runden wirklich wählbar sind (mind. 1 Thema von den Eltern aktiv)
+function storySelectableSubjects(profile){
+  const result = {};
+  SUBJECT_KEYS.forEach(k=>{
+    result[k] = topicKeysForSubject(k).some(t=> subjectProgress(profile,k).topicsEnabled[t]);
+  });
+  return result;
+}
+
+// Baut eine gemischte Runde aus den vom Kind gewählten Fächern.
+// Da alle Aufgaben generiert werden, ist jede Runde anders.
+function buildStoryRound(profile){
+  const selectable = storySelectableSubjects(profile);
+  let chosen = SUBJECT_KEYS.filter(k=> profile.story.subjects[k] && selectable[k]);
+  if(chosen.length===0) chosen = SUBJECT_KEYS.filter(k=> selectable[k]);
+  if(chosen.length===0) chosen = ["mathe"];
+  const slots = [];
+  for(let i=0;i<STORY_TASKS_PER_ROUND;i++) slots.push(chosen[i % chosen.length]);
+  return shuffle(slots).map(subjectKey=>{
+    const enabled = topicKeysForSubject(subjectKey).filter(t=> subjectProgress(profile,subjectKey).topicsEnabled[t]);
+    const pool = enabled.length ? enabled : topicKeysForSubject(subjectKey);
+    return { s: subjectKey, t: pick(pool) };
+  });
+}
+
+function renderStoryHub(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  const litCount = STORY_CHAPTERS.filter(c=> storyStars(profile, c.id)>=3).length;
+  wrap.innerHTML = `
+    <h1>🏮 Der erloschene Sternenstall</h1>
+    <div class="story-box" style="max-width:820px;">
+      <p style="margin:0;">${STORY_PROLOG}</p>
+      <p class="small-muted" style="margin:0;">${litCount} von ${STORY_CHAPTERS.length} Laternen leuchten wieder. Fülle in jedem Kapitel drei goldene Sterne, um die nächste Laterne zu erreichen.</p>
+    </div>
+    <div class="chapter-grid" id="storyGrid" style="margin-top:18px;"></div>
+    <div id="treasureBox" style="max-width:820px; width:100%;"></div>
+    <div class="footer-nav">
+      <button class="btn ghost" id="backHub">🏠 Zurück zum Stall</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const grid = wrap.querySelector("#storyGrid");
+  STORY_CHAPTERS.forEach((c, idx)=>{
+    const open = storyChapterOpen(profile, idx);
+    const stars = storyStars(profile, c.id);
+    const done = stars>=3;
+    const card = document.createElement("div");
+    card.className = "chapter-card" + (!open?" locked":"") + (done?" done":"");
+    card.innerHTML = `
+      <div class="chapter-badge lantern-icon ${done?"":"dark"}">🏮</div>
+      <div class="chapter-num">Laterne ${c.id} · ${c.areaEmoji} ${c.area}</div>
+      <div class="chapter-title">${c.title}</div>
+      <div>${storyStarsRow(stars)}</div>
+      ${!open?'<div class="small-muted">🔒 Fülle erst die drei Sterne im vorherigen Kapitel</div>':""}
+      ${open?`<button class="btn wide" data-story="${c.id}">${done?"Nochmal erleben":"Zum Kapitel"}</button>`:""}
+    `;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll("[data-story]").forEach(btn=>{
+    btn.onclick = ()=> goto({name:"storyIntro", storyChapterId:Number(btn.dataset.story)});
+  });
+  const treasures = profile.story.unlocked
+    .map(id=> STORY_CHAPTERS.flatMap(c=>c.unlocks||[]).find(u=>u.id===id))
+    .filter(Boolean);
+  if(treasures.length){
+    const typeLabel = {gebiet:"🗺️ Gebiet", aktivitaet:"🎠 Aktivität", ausruestung:"🎒 Ausrüstung"};
+    wrap.querySelector("#treasureBox").innerHTML = `
+      <div class="story-box" style="margin-top:18px;">
+        <h2 style="font-size:20px; margin:0;">✨ Schon freigeschaltet</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+          ${treasures.map(u=>`<span class="pill">${typeLabel[u.type]||""} ${u.label}${u.comingSoon?" · bald spielbar":""}</span>`).join("")}
+        </div>
+      </div>`;
+  }
+  wrap.querySelector("#backHub").onclick = ()=> gotoHub();
+}
+
+function renderStoryIntro(){
+  const profile = curProfile();
+  const chapter = STORY_CHAPTERS.find(c=>c.id===view.storyChapterId);
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  const stars = storyStars(profile, chapter.id);
+  const selectable = storySelectableSubjects(profile);
+  wrap.innerHTML = `
+    <div class="story-box" style="max-width:820px;">
+      <div class="chapter-num">Laterne ${chapter.id} · ${chapter.areaEmoji} ${chapter.area}</div>
+      <h1>${chapter.title}</h1>
+      <div style="display:flex; gap:14px; align-items:center; justify-content:center;">
+        ${avatarPortraitHtml(profile, 72)}
+        <span class="horse-emoji" style="font-size:56px;">🐴</span>
+        ${storyStarsRow(stars)}
+      </div>
+      <p style="text-align:left;">${chapter.scene}</p>
+      <div class="hint-bubble" style="max-width:100%;">
+        <span class="horse-emoji" style="font-size:40px;">🌫️</span>
+        <div><b>Die Aufgabe des Nebelgeists:</b>${chapter.geistAufgabe}</div>
+      </div>
+      <p style="margin-bottom:0;"><b>Welche Fächer nimmst du mit auf die Reise?</b></p>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;" id="subjectChips">
+        ${SUBJECT_KEYS.map(k=>{
+          const on = profile.story.subjects[k] && selectable[k];
+          return `<span class="chip ${on?"on":""} ${selectable[k]?"":"disabled"}" data-chip="${k}">${SUBJECTS[k].icon} ${SUBJECTS[k].subtitle}</span>`;
+        }).join("")}
+      </div>
+      <p class="small-muted" style="margin:0;">Schaffst du mindestens 9 von ${STORY_TASKS_PER_ROUND} Aufgaben gleich beim ersten Versuch, füllt sich ein goldener Stern.</p>
+      <button class="btn" id="startRound">Runde beginnen</button>
+      <button class="btn ghost" id="backStory">Zurück zur Karte</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  wrap.querySelectorAll("[data-chip]").forEach(chip=>{
+    chip.onclick = ()=>{
+      const k = chip.dataset.chip;
+      const currentlyOn = profile.story.subjects[k];
+      const onCount = SUBJECT_KEYS.filter(x=> profile.story.subjects[x] && selectable[x]).length;
+      if(currentlyOn && onCount<=1) return; // mindestens ein Fach bleibt gewählt
+      profile.story.subjects[k] = !currentlyOn;
+      saveState();
+      chip.classList.toggle("on", profile.story.subjects[k]);
+    };
+  });
+  wrap.querySelector("#startRound").onclick = ()=>{
+    const topics = buildStoryRound(profile);
+    goto({name:"task", storyMode:true, storyChapterId:chapter.id, taskIndex:0, topics, chapterStars:0, storyFirstTry:0});
+  };
+  wrap.querySelector("#backStory").onclick = ()=> goto({name:"story"});
+}
+
+function renderStoryReward(){
+  const profile = curProfile();
+  const chapter = STORY_CHAPTERS.find(c=>c.id===view.storyChapterId);
+  const pct = view.total>0 ? view.firstTry/view.total : 0;
+  const sehrGut = pct >= STORY_SEHR_GUT_QUOTE;
+  const prevStars = storyStars(profile, chapter.id);
+  let earned = false, justCompleted = false;
+  if(!view.applied){
+    view.applied = true;
+    if(sehrGut && prevStars<3){
+      profile.story.chapterStars[chapter.id] = prevStars+1;
+      earned = true;
+      if(prevStars+1===3){
+        justCompleted = true;
+        (chapter.unlocks||[]).forEach(u=>{
+          if(!profile.story.unlocked.includes(u.id)) profile.story.unlocked.push(u.id);
+        });
+      }
+      saveState();
+    }
+    view.earned = earned;
+    view.justCompleted = justCompleted;
+  }
+  earned = view.earned; justCompleted = view.justCompleted;
+  const nowStars = storyStars(profile, chapter.id);
+  const nextChapter = STORY_CHAPTERS[STORY_CHAPTERS.indexOf(chapter)+1];
+  const typeLabel = {gebiet:"🗺️ Gebiet", aktivitaet:"🎠 Aktivität", ausruestung:"🎒 Ausrüstung"};
+
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <div class="reward-scene" style="max-width:780px;">
+      <div style="display:flex; gap:16px; align-items:center;">
+        ${avatarPortraitHtml(profile, 76)}
+        <div class="lantern-icon ${nowStars>=3?"":"dark"}" style="font-size:80px;">🏮</div>
+        <span class="horse-emoji" style="font-size:64px; ${sehrGut?"animation:gallop 1.4s ease-in-out infinite;":""}">🐴</span>
+      </div>
+      <h1>${sehrGut ? "Sehr gut! 🎉" : "Tapfer gekämpft! 💜"}</h1>
+      <p>Du hast <b>${view.firstTry} von ${view.total}</b> Aufgaben gleich beim ersten Versuch gelöst.</p>
+      <div>${storyStarsRow(nowStars, earned ? nowStars-1 : -1)}</div>
+      ${sehrGut
+        ? `<p style="text-align:left;">${chapter.heartMoment}</p>`
+        : `<p>Der Nebelgeist nickt dir freundlich zu: "Das war schon richtig gut. Komm bald wieder – ich warte hier auf dich!" ${STORY_HORSE.name} schnaubt aufmunternd: Beim nächsten Mal füllt sich bestimmt ein Stern. 💪</p>`}
+      ${earned && !justCompleted ? `<p>⭐ Ein goldener Stern füllt sich! Noch ${3-nowStars} bis zur nächsten Laterne.</p>` : ""}
+      ${justCompleted ? `
+        <p>🏮 <b>Die Laterne leuchtet wieder!</b>${nextChapter?` Kapitel ${nextChapter.id} „${nextChapter.title}“ ist jetzt offen.`:" Du hast alle Laternen entzündet – das ganze Gestüt strahlt!"}</p>
+        ${(chapter.unlocks||[]).length?`<div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+          ${(chapter.unlocks||[]).map(u=>`<span class="pill">Neu: ${typeLabel[u.type]||""} ${u.label}${u.comingSoon?" · bald spielbar":""}</span>`).join("")}
+        </div>`:""}` : ""}
+      <p>⭐ Sternenstaub gesammelt: <b>${view.chapterStars}</b></p>
+      <div class="footer-nav">
+        ${!sehrGut || nowStars<3 ? `<button class="btn" id="retryRound">🔁 ${sehrGut?"Noch eine Runde":"Gleich nochmal"}</button>` : ""}
+        <button class="btn secondary" id="toStoryHub">🗺️ Zur Laternen-Karte</button>
+        <button class="btn ghost" id="toHub">🏠 Zum Stall</button>
+      </div>
+    </div>
+  `;
+  app.appendChild(wrap);
+  if(earned) spawnConfetti();
+  if(justCompleted) setTimeout(spawnConfetti, 700);
+  const retry = wrap.querySelector("#retryRound");
+  if(retry) retry.onclick = ()=> goto({name:"storyIntro", storyChapterId:chapter.id});
+  wrap.querySelector("#toStoryHub").onclick = ()=> goto({name:"story"});
+  wrap.querySelector("#toHub").onclick = ()=> gotoHub();
+}
+
+// ---------- Avatar-Erstellung ----------
+
+const AVATAR_SWATCH_CATS = [
+  {key:"skin",       label:"Hautton"},
+  {key:"hairColor",  label:"Haarfarbe"},
+  {key:"eyes",       label:"Augenfarbe"},
+  {key:"topColor",   label:"Oberteil"},
+  {key:"pantsColor", label:"Hose"}
+];
+const AVATAR_CHIP_CATS = [
+  {key:"hair",      label:"Frisur"},
+  {key:"accessory", label:"Magisches Accessoire"}
+];
+
+function renderAvatarEditor(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const draft = Object.assign({}, AVATAR_DEFAULT, profile.avatar||{});
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.style.justifyContent = "flex-start";
+  wrap.innerHTML = `
+    <h1>${view.firstTime ? "🪞 So siehst du als Magier-Kind aus!" : "🪞 Der Zauberspiegel"}</h1>
+    <p>${view.firstTime ? "Such dir aus, wie deine Figur aussehen soll. Du kannst sie später am Spiegel im Stall ändern." : "Ändere deine Figur, so oft du magst."}</p>
+    <div style="display:flex; gap:20px; flex-wrap:wrap; justify-content:center; align-items:flex-start; width:100%; max-width:1050px;">
+      <div id="avatarPreview" style="position:relative; width:290px; height:380px; border-radius:22px; background:rgba(255,255,255,.07); border:2px solid rgba(255,255,255,.2); overflow:hidden; flex-shrink:0;">
+        <div id="previewFallback" class="center-wrap" style="position:absolute; inset:0;"><div style="font-size:60px;">🧙</div><p class="small-muted">Vorschau wird geladen …</p></div>
+      </div>
+      <div style="flex:1; min-width:300px; max-width:640px;" id="avatarOptions"></div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="avatarSave">✨ Fertig!</button>
+      ${view.firstTime ? "" : '<button class="btn ghost" id="avatarCancel">Abbrechen</button>'}
+    </div>
+  `;
+  app.appendChild(wrap);
+
+  const optBox = wrap.querySelector("#avatarOptions");
+  function drawOptions(){
+    let html = "";
+    AVATAR_CHIP_CATS.filter(c=>c.key==="hair").forEach(cat=>{
+      html += `<div class="avatar-cat"><h3>${cat.label}</h3><div class="avatar-row">
+        ${AVATAR_OPTIONS[cat.key].map(o=>`<span class="chip ${draft[cat.key]===o.id?"on":""}" data-cat="${cat.key}" data-val="${o.id}">${o.emoji} ${o.label}</span>`).join("")}
+      </div></div>`;
+    });
+    AVATAR_SWATCH_CATS.forEach(cat=>{
+      html += `<div class="avatar-cat"><h3>${cat.label}</h3><div class="avatar-row">
+        ${AVATAR_OPTIONS[cat.key].map(o=>`<div class="swatch-lg ${draft[cat.key]===o.id?"selected":""}" title="${o.label}" data-cat="${cat.key}" data-val="${o.id}" style="background:${o.color};"></div>`).join("")}
+      </div></div>`;
+    });
+    AVATAR_CHIP_CATS.filter(c=>c.key==="accessory").forEach(cat=>{
+      html += `<div class="avatar-cat"><h3>${cat.label}</h3><div class="avatar-row">
+        ${AVATAR_OPTIONS[cat.key].map(o=>`<span class="chip ${draft[cat.key]===o.id?"on":""}" data-cat="${cat.key}" data-val="${o.id}">${o.emoji} ${o.label}</span>`).join("")}
+      </div></div>`;
+    });
+    optBox.innerHTML = html;
+    optBox.querySelectorAll("[data-cat]").forEach(el=>{
+      el.onclick = ()=>{
+        draft[el.dataset.cat] = el.dataset.val;
+        drawOptions();
+        if(avatarPreviewHandle) avatarPreviewHandle.setConfig(draft);
+      };
+    });
+  }
+  drawOptions();
+
+  // 3D-Vorschau nachladen (ohne WebGL/CDN funktioniert der Editor trotzdem)
+  const previewBox = wrap.querySelector("#avatarPreview");
+  if(webglAvailable()){
+    import("./js/avatar3d.js").then(mod=>{
+      if(view.name!=="avatarEditor") return;
+      const fb = wrap.querySelector("#previewFallback");
+      if(fb) fb.remove();
+      avatarPreviewHandle = mod.initAvatarPreview(previewBox, draft);
+    }).catch(()=>{});
+  } else {
+    const fb = wrap.querySelector("#previewFallback");
+    if(fb) fb.innerHTML = '<div style="font-size:60px;">🧙</div><p class="small-muted">Die 3D-Vorschau ist gerade nicht verfügbar – deine Auswahl wird trotzdem gespeichert!</p>';
+  }
+
+  wrap.querySelector("#avatarSave").onclick = ()=>{
+    profile.avatar = Object.assign({}, draft);
+    saveState();
+    // Portrait für Story-Szenen und Belohnungen rendern (optional, nur mit 3D)
+    const finish = ()=>{
+      const dest = view.returnTo;
+      if(dest==="stall3d") goto({name:"stall3d"});
+      else gotoHub();
+    };
+    if(webglAvailable()){
+      import("./js/avatar3d.js").then(mod=>{
+        try{ profile.avatarImage = mod.renderAvatarPortrait(profile.avatar, 256); saveState(); }catch(e){}
+        finish();
+      }).catch(finish);
+    } else finish();
+  };
+  const cancelBtn = wrap.querySelector("#avatarCancel");
+  if(cancelBtn) cancelBtn.onclick = ()=>{
+    if(view.returnTo==="stall3d") goto({name:"stall3d"});
+    else gotoHub();
+  };
+}
+
+function avatarPortraitHtml(profile, size){
+  if(!profile.avatarImage) return "";
+  const s = size||84;
+  return `<img class="avatar-portrait" style="width:${s}px; height:${s}px;" src="${profile.avatarImage}" alt="Dein Avatar">`;
 }
 
 function chapterUnlocked(chapters, idx, profile, subjectKey){
@@ -1968,12 +2362,12 @@ function levelLabel(level){ return level<=2 ? "leicht" : level===3 ? "mittel" : 
 function currentChapter(){ return chaptersForSubject(currentSubject).find(c=>c.id===view.chapterId); }
 
 function showHint(wrapEl, hintText){
-  const chapter = currentChapter();
+  const speaker = view.storyMode ? STORY_HORSE : currentChapter().horse;
   const hintSlot = wrapEl.querySelector("#hintSlot");
   hintSlot.innerHTML = `
     <div class="hint-bubble">
-      <span class="horse-emoji">${chapter.horse.emoji}</span>
-      <div><b>${chapter.horse.name} flüstert einen Tipp:</b>${hintText}<br><span class="small-muted">Versuch es gleich nochmal – du schaffst das! 💪</span></div>
+      <span class="horse-emoji">${speaker.emoji}</span>
+      <div><b>${speaker.name} flüstert einen Tipp:</b>${hintText}<br><span class="small-muted">Versuch es gleich nochmal – du schaffst das! 💪</span></div>
     </div>`;
 }
 
@@ -1991,6 +2385,7 @@ function awardTaskSuccess(firstTry, originEl){
   const starsGained = firstTry ? 2 : 1;
   profile.stars += starsGained;
   view.chapterStars += starsGained;
+  if(view.storyMode && firstTry) view.storyFirstTry++;
   saveState();
   if(originEl) flyStars(originEl, starsGained);
   setTimeout(()=>{
@@ -2014,18 +2409,29 @@ function registerTaskFailure(){
 }
 
 function renderTask(){
-  const chapters = chaptersForSubject(currentSubject);
-  const chapter = chapters.find(c=>c.id===view.chapterId);
   const profile = curProfile();
   topBar(state.currentProfile);
   const idx = view.taskIndex;
   if(idx >= view.topics.length){
-    return goto({name:"reward", chapterId:chapter.id, chapterStars:view.chapterStars});
+    if(view.storyMode){
+      return goto({name:"storyReward", storyChapterId:view.storyChapterId,
+        firstTry:view.storyFirstTry, total:view.topics.length, chapterStars:view.chapterStars});
+    }
+    return goto({name:"reward", chapterId:view.chapterId, chapterStars:view.chapterStars});
   }
-  const topic = view.topics[idx];
+  // Story-Runden mischen Fächer: jeder Eintrag bringt sein Fach mit.
+  let topic;
+  if(view.storyMode){
+    const entry = view.topics[idx];
+    currentSubject = entry.s;
+    topic = entry.t;
+  } else {
+    topic = view.topics[idx];
+  }
+  const chapter = view.storyMode ? null : chaptersForSubject(currentSubject).find(c=>c.id===view.chapterId);
   const level = subjectProgress(profile,currentSubject).stats[topic].level;
   if(!view.currentTask || view.currentTaskTopic!==topic){
-    view.currentTask = generateTask(currentSubject, topic, level, chapter.theme);
+    view.currentTask = generateTask(currentSubject, topic, level, chapter ? chapter.theme : "stars");
     view.currentTaskTopic = topic;
     view.attemptFailed = false;
     view.subStep = 0;
@@ -2248,7 +2654,10 @@ function renderReward(){
   wrap.className = "center-wrap";
   wrap.innerHTML = `
     <div class="reward-scene">
-      <div class="horse-emoji gallop" style="${typeof chapter.horse.hue==='number'?`filter:hue-rotate(${chapter.horse.hue}deg) saturate(1.3);`:'animation:rainbowHue 3s linear infinite, gallop 1.4s ease-in-out infinite;'}">${chapter.horse.emoji}</div>
+      <div style="display:flex; gap:16px; align-items:center;">
+        ${avatarPortraitHtml(profile, 76)}
+        <div class="horse-emoji gallop" style="${typeof chapter.horse.hue==='number'?`filter:hue-rotate(${chapter.horse.hue}deg) saturate(1.3);`:'animation:rainbowHue 3s linear infinite, gallop 1.4s ease-in-out infinite;'}">${chapter.horse.emoji}</div>
+      </div>
       <h1>Geschafft! 🎉</h1>
       <p>${chapter.reward}</p>
       <p><b>${chapter.horse.name}</b> (${chapter.horse.color}) ist jetzt frei und lebt in deinem Stall!<br>Magische Fähigkeit: ${chapter.horse.ability}</p>
