@@ -83,6 +83,8 @@ wenn echte Inhalte dafür existieren (`GRADE_HAS_CONTENT`).
   Editor-Vorschau (initAvatarPreview) und Portrait-Renderer
   (renderAvatarPortrait → PNG-DataURL in `profile.avatarImage` für
   2D-Ansichten); Avatar-Konfiguration liegt in `profile.avatar`
+- `js/pflege3d.js` – Pflege-Minispiele im 3D-Stall (Striegeln, Hufe säubern);
+  reine Belohnungs-Aktivitäten mit Bonus-Sternen, Pferd ist nie traurig
 - `js/story-data.js` – Story "Der erloschene Sternenstall" (10 Kapitel,
   `window.STORY_CHAPTERS`/`window.STORY_PROLOG`); Freischalt-Logik:
   3× "Sehr gut" (≥90 % im ersten Versuch, 10 Aufgaben/Runde) öffnet das

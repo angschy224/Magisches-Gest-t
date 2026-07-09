@@ -262,7 +262,7 @@
 
 // WICHTIG: Bei jeder Code-Änderung sowohl hier als auch in version.json
 // und in sw.js (APP_VERSION/CACHE_NAME) die Versionsnummer erhöhen.
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 
 const STORAGE_KEY = "magischesGestuetV1";
 const PROFILE_SLOTS = ["child1","child2","child3"];
@@ -837,6 +837,13 @@ function renderStall3d(){
       soundOn: ()=> state.settings.soundOn,
       onNavigate: (subjectKey)=>{ currentSubject = subjectKey; goto({name:"home"}); },
       onMirror: ()=> goto({name:"avatarEditor", returnTo:"stall3d"}),
+      onBonusStars: (n)=>{
+        profile.stars += n;
+        saveState();
+        const sc = document.querySelector(".starcount");
+        if(sc) sc.textContent = "⭐ " + profile.stars;
+        spawnConfetti();
+      },
       onParent: ()=>{
         returnView = {name:"stall3d"};
         if(state.currentProfile) logTime(state.currentProfile);

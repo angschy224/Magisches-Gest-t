@@ -3,12 +3,18 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { buildHorse, makeGradientMap } from "./horse3d.js";
 import { buildAvatar } from "./avatar3d.js";
+import { startStriegeln, startHufeSaeubern } from "./pflege3d.js";
 
 const NAV_ICONS = [
   { id:"mathe",   emoji:"🐴", label:"Koppel",        pos:[-2.15, 2.75, -2.0] },
   { id:"deutsch", emoji:"📚", label:"Bibliothek",    pos:[ 2.15, 2.75, -2.0] },
   { id:"hsu",     emoji:"🌳", label:"Abenteuerwald", pos:[-2.55, 1.35,  0.4] },
   { id:"parent",  emoji:"⚙️", label:"Eltern",        pos:[ 2.55, 1.35,  0.4] }
+];
+// Pflege-Minispiele: reine Belohnungs-Aktivitäten, ab Kapitel 1 verfügbar
+const CARE_ICONS = [
+  { id:"striegeln", emoji:"🖌️", label:"Striegeln",    pos:[-1.5, 0.62, 1.6] },
+  { id:"hufe",      emoji:"🪥", label:"Hufe säubern", pos:[-0.3, 0.58, 2.0] }
 ];
 
 function toon(color, gradientMap, extra){
@@ -90,7 +96,7 @@ function playSnort(){
 }
 
 export function initStall3d(opts){
-  const { container, onNavigate, onParent, onMirror, soundOn, avatarConfig } = opts;
+  const { container, onNavigate, onParent, onMirror, onBonusStars, soundOn, avatarConfig } = opts;
   const rectOf = ()=>{
     const r = container.getBoundingClientRect();
     return { w: Math.max(r.width, 200), h: Math.max(r.height, 200) };
@@ -229,6 +235,40 @@ export function initStall3d(opts){
     iconSprites.push(sprite);
   });
 
+  // ---- Pflege-Symbole (Striegeln, Hufe säubern) ----
+  const careSprites = [];
+  CARE_ICONS.forEach((icon, i)=>{
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTexture(icon.emoji, icon.label), transparent:true }));
+    sprite.position.set(icon.pos[0], icon.pos[1], icon.pos[2]);
+    sprite.scale.set(0.72, 0.72, 1);
+    sprite.userData = { careId: icon.id, baseY: icon.pos[1], phase: 2 + i * 1.3 };
+    scene.add(sprite);
+    careSprites.push(sprite);
+  });
+
+  // ---- Aktives Pflege-Minispiel ----
+  let activity = null;
+  function endActivity(){
+    if(!activity) return;
+    activity.destroy();
+    activity = null;
+    applyCamera(); // zurück zur freien Ansicht
+    if(avatar) avatar.group.visible = true;
+    [...iconSprites, ...careSprites].forEach(s=> s.material.opacity = 1);
+  }
+  function startCare(id){
+    if(activity) return;
+    // Das Kind "übernimmt" selbst Bürste bzw. Hufkratzer – Figur tritt beiseite
+    if(avatar) avatar.group.visible = false;
+    [...iconSprites, ...careSprites].forEach(s=> s.material.opacity = 0.15);
+    const ctx = {
+      scene, camera, el: renderer.domElement, container, horse,
+      spawnHearts, soundOn, playSnort, onBonusStars,
+      onExit: endActivity
+    };
+    activity = id === "striegeln" ? startStriegeln(ctx) : startHufeSaeubern(ctx);
+  }
+
   // ---- Glitzerpartikel (sparsam) ----
   const P = 70;
   const pGeo = new THREE.BufferGeometry();
@@ -288,6 +328,7 @@ export function initStall3d(opts){
   const el = renderer.domElement;
   function onDown(e){
     userInteracted = true;
+    if(activity) return; // Minispiel übernimmt die Eingaben
     el.setPointerCapture && el.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if(pointers.size === 1){ downX = e.clientX; downY = e.clientY; moved = false; }
@@ -297,6 +338,7 @@ export function initStall3d(opts){
     }
   }
   function onMove(e){
+    if(activity) return;
     if(!pointers.has(e.pointerId)) return;
     const prev = pointers.get(e.pointerId);
     const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
@@ -316,6 +358,7 @@ export function initStall3d(opts){
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   function onUp(e){
+    if(activity) return;
     pointers.delete(e.pointerId);
     lastPinchDist = 0;
     if(moved || pointers.size > 0) return;
@@ -328,6 +371,11 @@ export function initStall3d(opts){
       if(id === "parent") onParent(); else onNavigate(id);
       return;
     }
+    const careHit = raycaster.intersectObjects(careSprites, false)[0];
+    if(careHit){
+      startCare(careHit.object.userData.careId);
+      return;
+    }
     if(onMirror && raycaster.intersectObject(mirrorGroup, true).length){
       onMirror();
       return;
@@ -338,7 +386,7 @@ export function initStall3d(opts){
       if(soundOn()) playSnort();
     }
   }
-  function onWheel(e){ e.preventDefault(); radius *= 1 + Math.sign(e.deltaY) * 0.08; applyCamera(); }
+  function onWheel(e){ e.preventDefault(); if(activity) return; radius *= 1 + Math.sign(e.deltaY) * 0.08; applyCamera(); }
   el.addEventListener("pointerdown", onDown);
   el.addEventListener("pointermove", onMove);
   el.addEventListener("pointerup", onUp);
@@ -364,6 +412,7 @@ export function initStall3d(opts){
 
     horse.tick(t, dt, camera);
     if(avatar) avatar.tick(t, dt);
+    if(activity) activity.tick(t, dt);
     mirrorGlass.material.color.setHSL(0.6, 0.55, 0.8 + Math.sin(t * 1.8) * 0.06);
     lantern.intensity = 55 + Math.sin(t * 7.3) * 3 + Math.sin(t * 13.1) * 2;
     lampGlow.material.color.setHSL(0.09, 1, 0.72 + Math.sin(t * 7.3) * 0.03);
@@ -372,6 +421,11 @@ export function initStall3d(opts){
       const k = 1 + Math.sin(t * 2 + s.userData.phase) * 0.05;
       s.scale.set(k, k, 1);
       s.position.y = s.userData.baseY + Math.sin(t * 1.1 + s.userData.phase) * 0.06;
+    });
+    careSprites.forEach(s=>{
+      const k = 0.72 * (1 + Math.sin(t * 2 + s.userData.phase) * 0.05);
+      s.scale.set(k, k, 1);
+      s.position.y = s.userData.baseY + Math.sin(t * 1.1 + s.userData.phase) * 0.05;
     });
 
     const pos = pGeo.attributes.position;
@@ -401,6 +455,7 @@ export function initStall3d(opts){
   rafId = requestAnimationFrame(loop);
 
   function destroy(){
+    if(activity){ try{ activity.destroy(); }catch(e){} activity = null; }
     cancelAnimationFrame(rafId);
     window.removeEventListener("resize", onResize);
     el.removeEventListener("pointerdown", onDown);

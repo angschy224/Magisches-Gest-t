@@ -138,12 +138,25 @@ export function buildHorse(gradientMap){
   let twitchStart = -1, twitchEar = 0;
   let nextBlink = 1.5 + Math.random() * 3;
   let blinkStart = -1;
+  let relaxed = false; // Wohlfühl-Pose beim Striegeln: Augen zu, Ohren locker
   const camLocal = new THREE.Vector3();
 
   function tick(t, dt, camera){
     // Atmen
     const breath = 1 + Math.sin(t * 1.6) * 0.02;
     body.scale.set(0.78 * breath, 0.82 * (2 - breath), 1.5);
+
+    if(relaxed){
+      const k = Math.min(1, dt * 6);
+      eyeParts.forEach(e => e.scale.y += (0.12 - e.scale.y) * k);
+      ears[0].rotation.z += (-0.55 - ears[0].rotation.z) * k;
+      ears[1].rotation.z += (0.55 - ears[1].rotation.z) * k;
+      headAssembly.rotation.x += (0.08 - headAssembly.rotation.x) * Math.min(1, dt * 3);
+      tail.rotation.z = Math.sin(t * 0.9) * 0.12;
+      return;
+    }
+    ears[0].rotation.z += (-0.18 - ears[0].rotation.z) * Math.min(1, dt * 4);
+    ears[1].rotation.z += (0.18 - ears[1].rotation.z) * Math.min(1, dt * 4);
 
     // Kopf heben/senken (Idle) bzw. zur Kamera schauen
     let targetYaw = 0, targetPitch = Math.sin(t * 0.55) * 0.07;
@@ -188,5 +201,7 @@ export function buildHorse(gradientMap){
     return pos;
   }
 
-  return { group: horse, tick, poke };
+  function setRelaxed(v){ relaxed = !!v; }
+
+  return { group: horse, tick, poke, setRelaxed, legs };
 }
