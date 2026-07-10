@@ -262,7 +262,7 @@
 
 // WICHTIG: Bei jeder Code-Änderung sowohl hier als auch in version.json
 // und in sw.js (APP_VERSION/CACHE_NAME) die Versionsnummer erhöhen.
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.5.0";
 
 const STORAGE_KEY = "magischesGestuetV1";
 const PROFILE_SLOTS = ["child1","child2","child3"];
@@ -565,6 +565,7 @@ function logTime(profileName){
 
 let stall3dHandle = null;
 let avatarPreviewHandle = null;
+let reitenHandle = null;
 
 function goto(v){
   if(view.name==="task" && v.name!=="task") logTime(state.currentProfile);
@@ -575,6 +576,10 @@ function goto(v){
   if(avatarPreviewHandle && v.name!=="avatarEditor"){
     try{ avatarPreviewHandle.destroy(); }catch(e){}
     avatarPreviewHandle = null;
+  }
+  if(reitenHandle && v.name!=="reiten"){
+    try{ reitenHandle.destroy(); }catch(e){}
+    reitenHandle = null;
   }
   view = v;
   render();
@@ -638,6 +643,8 @@ function render(){
   if(view.name==="storyIntro") return renderStoryIntro();
   if(view.name==="storyReward") return renderStoryReward();
   if(view.name==="avatarEditor") return renderAvatarEditor();
+  if(view.name==="reitplatz") return renderReitplatz();
+  if(view.name==="reiten") return renderReiten();
   if(view.name==="comingSoon") return renderComingSoon();
   if(view.name==="home") return renderHome();
   if(view.name==="chapterIntro") return renderChapterIntro();
@@ -748,12 +755,14 @@ function renderSubjectMap(){
     <div style="margin-bottom:6px;"><button class="btn" id="toStory2d">🏮 Sternenlaternen – die große Geschichte</button></div>
     <div class="profile-grid" id="subjectGrid"></div>
     <div class="footer-nav">
+      <button class="btn ghost" id="toReiten2d">🐎 Reitplatz</button>
       <button class="btn ghost" id="toAvatar2d">🪞 Mein Avatar</button>
       <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
     </div>
   `;
   app.appendChild(wrap);
   wrap.querySelector("#toStory2d").onclick = ()=> goto({name:"story"});
+  wrap.querySelector("#toReiten2d").onclick = ()=> goto({name:"reitplatz"});
   wrap.querySelector("#toAvatar2d").onclick = ()=> goto({name:"avatarEditor", returnTo:"hub"});
   const grid = wrap.querySelector("#subjectGrid");
   SUBJECT_KEYS.forEach(key=>{
@@ -812,6 +821,7 @@ function renderStall3d(){
     </div>
     <div class="footer-nav" style="padding:12px;">
       <button class="btn" id="toStory">🏮 Sternenlaternen</button>
+      <button class="btn secondary" id="toReiten">🐎 Reitplatz</button>
       <button class="btn secondary" id="toHorses">🐴 Meine Pferde</button>
       <button class="btn ghost" id="soundToggle">${state.settings.soundOn?"🔊 Ton an":"🔇 Ton aus"}</button>
       <button class="btn ghost" id="switchProfile">🔄 Profil wechseln</button>
@@ -819,6 +829,7 @@ function renderStall3d(){
   `;
   app.appendChild(wrap);
   wrap.querySelector("#toStory").onclick = ()=> goto({name:"story"});
+  wrap.querySelector("#toReiten").onclick = ()=> goto({name:"reitplatz"});
   wrap.querySelector("#toHorses").onclick = ()=> goto({name:"stall"});
   wrap.querySelector("#switchProfile").onclick = ()=>{ logTime(state.currentProfile); state.currentProfile=null; goto({name:"profileSelect"}); };
   const soundBtn = wrap.querySelector("#soundToggle");
@@ -1190,6 +1201,113 @@ function avatarPortraitHtml(profile, size){
   if(!profile.avatarImage) return "";
   const s = size||84;
   return `<img class="avatar-portrait" style="width:${s}px; height:${s}px;" src="${profile.avatarImage}" alt="Dein Avatar">`;
+}
+
+// ---------- Reit-Aktivitäten (durch Story-Kapitel freigeschaltet) ----------
+
+const RIDE_ACTIVITIES = [
+  { id:"voltigieren", emoji:"🤸", name:"Voltigieren", ort:"In der Halle", chapterIdx:1, chapterNr:2,
+    story:"Nach der zweiten Laterne zeigt dir Funkelstern ihre ruhigste Gangart – Zeit für deine ersten Kunststücke an der Longe!" },
+  { id:"halle", emoji:"💫", name:"Hallenreiten", ort:"In der Halle", chapterIdx:3, chapterNr:4,
+    story:"Zur Feier des Glühwürmchenwaldes hat der Nebelgeist schwebende Sternringe in der Halle aufgehängt – reite hindurch!" },
+  { id:"koppel", emoji:"🌸", name:"Koppelreiten", ort:"Auf der Koppel", chapterIdx:5, chapterNr:6,
+    story:"Auf der großen Koppel hat der Nebelgeist aus Versehen seine Zauberblumen verstreut – sammle sie für ihn ein!" },
+  { id:"wald", emoji:"🌲", name:"Waldausritt", ort:"Im Zauberwald", chapterIdx:7, chapterNr:8,
+    story:"Der Sternenhügel hat euch mutig gemacht: Zeit für den ersten Ausritt in den leuchtenden Glühwürmchenwald!" }
+];
+
+function rideUnlocked(profile, act){ return storyChapterOpen(profile, act.chapterIdx); }
+
+function renderReitplatz(){
+  const profile = curProfile();
+  topBar(state.currentProfile);
+  const wrap = document.createElement("div");
+  wrap.className = "center-wrap";
+  wrap.innerHTML = `
+    <h1>🐎 Der Reitplatz</h1>
+    <p>Gemeinsame Abenteuer mit Funkelstern – neue Aktivitäten schaltest du in der Geschichte frei.</p>
+    <div class="chapter-grid" id="rideGrid" style="max-width:900px;"></div>
+    <div class="footer-nav">
+      <button class="btn ghost" id="backHub">🏠 Zurück zum Stall</button>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const grid = wrap.querySelector("#rideGrid");
+  RIDE_ACTIVITIES.forEach(act=>{
+    const open = rideUnlocked(profile, act);
+    const card = document.createElement("div");
+    card.className = "chapter-card" + (open?"":" locked");
+    card.innerHTML = `
+      <div class="chapter-badge">${act.emoji}</div>
+      <div class="chapter-num">${act.ort} · ab Kapitel ${act.chapterNr}</div>
+      <div class="chapter-title">${act.name}</div>
+      <div class="chapter-topic">${act.story}</div>
+      ${open
+        ? `<button class="btn wide" data-ride="${act.id}">Aufsteigen!</button>`
+        : `<div class="small-muted">🔒 Öffne erst Kapitel ${act.chapterNr} der Geschichte</div>`}
+    `;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll("[data-ride]").forEach(btn=>{
+    btn.onclick = ()=> goto({name:"reiten", rideId:btn.dataset.ride});
+  });
+  wrap.querySelector("#backHub").onclick = ()=> gotoHub();
+}
+
+function renderReiten(){
+  const profile = curProfile();
+  const act = RIDE_ACTIVITIES.find(a=>a.id===view.rideId);
+  topBar(state.currentProfile);
+  if(!webglAvailable()){
+    const wrap = document.createElement("div");
+    wrap.className = "center-wrap";
+    wrap.innerHTML = `
+      <div class="story-box">
+        <div class="horse-emoji small">${act.emoji}</div>
+        <h1>${act.name}</h1>
+        <p>Für den Reitplatz braucht dein Gerät 3D-Magie, die gerade nicht verfügbar ist. Schau später noch einmal vorbei! ✨</p>
+        <button class="btn secondary" id="backRide">Zurück</button>
+      </div>`;
+    app.appendChild(wrap);
+    wrap.querySelector("#backRide").onclick = ()=> goto({name:"reitplatz"});
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "flex:1; display:flex; flex-direction:column; min-height:0; padding:0 16px 12px;";
+  wrap.innerHTML = `
+    <div id="rideScene" style="flex:1; min-height:320px; position:relative; touch-action:none; border-radius:22px; overflow:hidden; background:rgba(255,255,255,.05);">
+      <div id="rideLoading" class="center-wrap" style="position:absolute; inset:0;">
+        <div class="horse-emoji small gallop">🐴</div>
+        <p>✨ ${act.name} wird vorbereitet …</p>
+      </div>
+    </div>
+  `;
+  app.appendChild(wrap);
+  const container = wrap.querySelector("#rideScene");
+  import("./js/reiten3d.js").then(mod=>{
+    if(view.name!=="reiten") return;
+    const handle = mod.initReiten({
+      container,
+      type: act.id,
+      storyText: act.story,
+      avatarConfig: profile.avatar,
+      soundOn: ()=> state.settings.soundOn,
+      onBonusStars: (n)=>{
+        profile.stars += n;
+        saveState();
+        const sc = document.querySelector(".starcount");
+        if(sc) sc.textContent = "⭐ " + profile.stars;
+        spawnConfetti();
+      },
+      onExit: ()=>{ if(view.name==="reiten") goto({name:"reitplatz"}); }
+    });
+    if(view.name!=="reiten"){ handle.destroy(); return; }
+    reitenHandle = handle;
+    const loading = wrap.querySelector("#rideLoading");
+    if(loading) loading.remove();
+  }).catch(()=>{
+    if(view.name==="reiten") goto({name:"reitplatz"});
+  });
 }
 
 function chapterUnlocked(chapters, idx, profile, subjectKey){

@@ -184,7 +184,7 @@ export function buildAvatar(config, gradientMap){
   let blinkStart = -1, nextBlink = 2 + Math.random()*3;
   function tick(t, dt){
     // sanftes Wippen + Armschwingen (Idle)
-    avatar.position.y = Math.sin(t*1.4)*0.015;
+    avatar.position.y = (avatar.userData.baseY || 0) + Math.sin(t*1.4)*0.015;
     arms[0].rotation.z = -0.25 + Math.sin(t*1.4)*0.05;
     arms[1].rotation.z = 0.25 - Math.sin(t*1.4)*0.05;
     headGroup.rotation.z = Math.sin(t*0.7)*0.03;
@@ -197,7 +197,7 @@ export function buildAvatar(config, gradientMap){
     }
   }
 
-  return { group: avatar, tick };
+  return { group: avatar, tick, arms };
 }
 
 // Editor-Vorschau: kleine Szene mit langsam drehender Figur.

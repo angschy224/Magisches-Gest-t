@@ -85,6 +85,15 @@ wenn echte Inhalte dafür existieren (`GRADE_HAS_CONTENT`).
   2D-Ansichten); Avatar-Konfiguration liegt in `profile.avatar`
 - `js/pflege3d.js` – Pflege-Minispiele im 3D-Stall (Striegeln, Hufe säubern);
   reine Belohnungs-Aktivitäten mit Bonus-Sternen, Pferd ist nie traurig
+- `js/reiten3d.js` – Reit-Infrastruktur (Reiter = Pferd + aufgesessener
+  Avatar mit Gangarten Schritt/Trab/Galopp, Szenen-Setup mit magischem
+  Nebel als Sichtweiten-Begrenzung, Overlay-UI, sanfte Musik)
+- `js/reiten-halle.js` – Voltigieren (Timing an der Longe, ab Kapitel 2)
+  und Hallenreiten (Sternringe, Spurwechsel per Tippen, Trab per Halten,
+  ab Kapitel 4)
+- `js/reiten-gelaende.js` – Koppelreiten (Tap-to-move, Zauberblumen
+  sammeln, erster Galopp, ab Kapitel 6) und Waldausritt (geführter Pfad,
+  Sprünge per Tippen, versteckte Sternenlaternen, ab Kapitel 8)
 - `js/story-data.js` – Story "Der erloschene Sternenstall" (10 Kapitel,
   `window.STORY_CHAPTERS`/`window.STORY_PROLOG`); Freischalt-Logik:
   3× "Sehr gut" (≥90 % im ersten Versuch, 10 Aufgaben/Runde) öffnet das
